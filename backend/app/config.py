@@ -11,6 +11,19 @@ class Settings(BaseSettings):
     app_name: str = "ClimateRisk Sentinel API"
     cors_origins: str = ""
 
+    database_url: str = "postgresql+psycopg://sentinel:sentinel@127.0.0.1:5432/climate_risk"
+
+    stac_catalog_url: str = "https://planetarycomputer.microsoft.com/api/stac/v1"
+    default_stac_collection: str = "sentinel-2-l2a"
+    stac_datetime_preset: str = "2024-01-01/2025-12-31"
+    stac_max_items: int = 25
+    stac_cloud_cover_lt: float = 45.0
+
+    max_aoi_area_km2: float = 500_000.0
+
+    metadata_cache_ttl_seconds: int = 300
+    metadata_cache_max_entries: int = 128
+
     @property
     def cors_origin_list(self) -> list[str]:
         raw = self.cors_origins.strip()

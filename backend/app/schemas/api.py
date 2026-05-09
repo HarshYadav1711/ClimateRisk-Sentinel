@@ -6,6 +6,10 @@ class HealthResponse(BaseModel):
 
     status: str = Field(..., examples=["ok"])
     service: str
+    database: bool = Field(
+        default=False,
+        description="True when PostGIS is connected and AOI persistence is available.",
+    )
 
 
 class VersionResponse(BaseModel):

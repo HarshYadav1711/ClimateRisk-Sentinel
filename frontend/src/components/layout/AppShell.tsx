@@ -1,22 +1,50 @@
-import { useEffect, useState } from "react";
-import { fetchHealth, fetchVersion, type VersionPayload } from "../../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import {
+  fetchHealth,
+  fetchVersion,
+  saveAoi,
+  searchDatasets,
+  validateAoiGeometry,
+  type AOIMetadata,
+  type DatasetSearchResponse,
+  type VersionPayload,
+} from "../../lib/api";
+import { ensureClosedRing, polygonFromLonLatText } from "../../geo/polygonText";
+import type { GeoJsonPolygon } from "../../types/domain";
 import { AoiInputSection } from "../sections/AoiInputSection";
 import { AnalysisSummarySection } from "../sections/AnalysisSummarySection";
 import { LayersSection } from "../sections/LayersSection";
 import { MapSection } from "../sections/MapSection";
 import { ReportExportSection } from "../sections/ReportExportSection";
+import { StacPreviewSection } from "../sections/StacPreviewSection";
 
 export function AppShell() {
   const [version, setVersion] = useState<VersionPayload | null>(null);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [dbAvailable, setDbAvailable] = useState<boolean | null>(null);
+
+  const [coordsText, setCoordsText] = useState("");
+  const [aoiGeometry, setAoiGeometry] = useState<GeoJsonPolygon | null>(null);
+  const [validatedGeometry, setValidatedGeometry] = useState<GeoJsonPolygon | null>(null);
+  const [metadata, setMetadata] = useState<AOIMetadata | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [savedAoiId, setSavedAoiId] = useState<string | null>(null);
+  const [stacPreview, setStacPreview] = useState<DatasetSearchResponse | null>(null);
+
+  const [busy, setBusy] = useState(false);
+  const [stacLoading, setStacLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        await fetchHealth();
+        const h = await fetchHealth();
         const v = await fetchVersion();
-        if (!cancelled) setVersion(v);
+        if (!cancelled) {
+          setVersion(v);
+          setDbAvailable(h.database ?? false);
+        }
       } catch (e) {
         if (!cancelled) {
           setBackendError(e instanceof Error ? e.message : "Backend unreachable");
@@ -28,6 +56,111 @@ export function AppShell() {
     };
   }, []);
 
+  const applyTextCoords = useCallback(() => {
+    setError(null);
+    try {
+      const poly = ensureClosedRing(polygonFromLonLatText(coordsText));
+      setAoiGeometry(poly);
+      setValidatedGeometry(null);
+      setMetadata(null);
+      setWarnings([]);
+      setStacPreview(null);
+      setSavedAoiId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not parse coordinates.");
+    }
+  }, [coordsText]);
+
+  const onDrawPolygon = useCallback((g: GeoJsonPolygon) => {
+    setError(null);
+    const poly = ensureClosedRing(g);
+    setAoiGeometry(poly);
+    setValidatedGeometry(null);
+    setMetadata(null);
+    setWarnings([]);
+    setStacPreview(null);
+    setSavedAoiId(null);
+  }, []);
+
+  const onClearDraw = useCallback(() => {
+    setAoiGeometry(null);
+    setValidatedGeometry(null);
+    setMetadata(null);
+    setWarnings([]);
+    setStacPreview(null);
+  }, []);
+
+  const runValidate = useCallback(async () => {
+    if (!aoiGeometry) {
+      setError("Define an AOI by drawing or pasting coordinates.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await validateAoiGeometry(aoiGeometry);
+      setValidatedGeometry(res.normalized_geometry as GeoJsonPolygon);
+      setAoiGeometry(res.normalized_geometry as GeoJsonPolygon);
+      setMetadata(res.metadata);
+      setWarnings(res.warnings);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Validation failed.");
+    } finally {
+      setBusy(false);
+    }
+  }, [aoiGeometry]);
+
+  const runSave = useCallback(async () => {
+    const geom = validatedGeometry ?? aoiGeometry;
+    if (!geom) {
+      setError("Nothing to save — validate or draw an AOI first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await saveAoi(geom);
+      setSavedAoiId(res.id);
+      setValidatedGeometry(res.normalized_geometry as GeoJsonPolygon);
+      setMetadata(res.metadata);
+      setWarnings(res.warnings);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  }, [aoiGeometry, validatedGeometry]);
+
+  const runStacSearch = useCallback(async () => {
+    setError(null);
+    const geom = validatedGeometry ?? aoiGeometry;
+    if (geom) {
+      setStacLoading(true);
+      try {
+        const res = await searchDatasets({ geometry: geom });
+        setStacPreview(res);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "STAC search failed.");
+      } finally {
+        setStacLoading(false);
+      }
+      return;
+    }
+    if (savedAoiId) {
+      setStacLoading(true);
+      try {
+        const res = await searchDatasets({ aoiId: savedAoiId });
+        setStacPreview(res);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "STAC search failed.");
+      } finally {
+        setStacLoading(false);
+      }
+      return;
+    }
+    setError("Draw or paste an AOI (or save one), then search STAC.");
+  }, [aoiGeometry, validatedGeometry, savedAoiId]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
@@ -38,8 +171,8 @@ export function AppShell() {
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-white">ClimateRisk Sentinel</h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-              Infrastructure-oriented exposure screening against open climate and map data — heuristic,
-              explainable, and built for iterative delivery.
+              AOI ingestion, validation, and Planetary Computer STAC discovery — open data only, reproducible
+              queries.
             </p>
           </div>
           <div className="text-right text-xs text-slate-500">
@@ -59,18 +192,37 @@ export function AppShell() {
 
       <main className="mx-auto max-w-6xl px-4 py-10 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-2">
-          <AoiInputSection />
+          <AoiInputSection
+            coordsText={coordsText}
+            onCoordsChange={setCoordsText}
+            onApplyText={applyTextCoords}
+            onValidate={runValidate}
+            onSave={runSave}
+            onSearchStac={runStacSearch}
+            busy={busy || stacLoading}
+            error={error}
+            dbAvailable={dbAvailable}
+            savedAoiId={savedAoiId}
+          />
           <LayersSection />
           <div className="lg:col-span-2">
-            <MapSection />
+            <MapSection
+              aoiGeometry={aoiGeometry}
+              onDrawPolygon={onDrawPolygon}
+              onClearDraw={onClearDraw}
+            />
           </div>
-          <AnalysisSummarySection />
+          <AnalysisSummarySection metadata={metadata} warnings={warnings} />
+          <StacPreviewSection
+            datasetPreview={stacPreview}
+            loading={stacLoading}
+          />
           <ReportExportSection />
         </div>
       </main>
 
       <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-600">
-        Free/open data only · No authentication in skeleton · Map tiles © OpenStreetMap contributors
+        AOI pipeline · Microsoft Planetary Computer STAC · Map tiles © OpenStreetMap contributors
       </footer>
     </div>
   );

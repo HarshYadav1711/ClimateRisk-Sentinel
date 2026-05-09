@@ -1,62 +1,65 @@
 # ClimateRisk Sentinel
 
-**ClimateRisk Sentinel** is a monorepo for a climate / infrastructure geospatial product: a **React** analyst UI and a **FastAPI** service that will orchestrate open-data ingestion, spatial analysis, and reporting. This repository ships as a **runnable skeleton**—clean boundaries, strict typing, and placeholder domain models so features can land without refactors.
+Monorepo for an infrastructure-oriented **climate / geospatial** product: a **React + Leaflet** analyst UI and a **FastAPI** backend that validates AOIs, persists them to **PostGIS** (optional), and discovers **Sentinel-2 L2A** scenes via the **Microsoft Planetary Computer public STAC API** (no billing).
 
-### System design (short)
+### Design (short)
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│  frontend/     React + TypeScript + Tailwind + Leaflet      │
-│                UI shells → future hooks into REST APIs        │
-└───────────────────────────────┬─────────────────────────────┘
-                                │ HTTP (/api/v1/…)
-┌───────────────────────────────▼─────────────────────────────┐
-│  backend/app                                                │
-│    api/routes     HTTP adapters only                        │
-│    schemas        Pydantic I/O contracts                    │
-│    domain         Pure AOI / indicator concepts             │
-│    services       Future STAC, raster, vector, scoring      │
-│    utils          Shared helpers                            │
-└─────────────────────────────────────────────────────────────┘
+frontend/          React · AOI text + map draw · calls REST
+backend/app/api/routes   Thin HTTP adapters
+backend/app/schemas      Pydantic wire formats
+backend/app/domain       AOI concepts (extend freely)
+backend/app/services     geometry validation · STAC metadata (+ TTL cache)
+backend/app/db           PostGIS persistence (stored AOIs)
 ```
 
-**Principles:** routes stay thin; **schemas** define wire formats; **domain** holds analysis concepts independent of FastAPI; **services** will encapsulate IO and algorithms (STAC, Rasterio, GeoPandas, PostGIS, etc.) as you extend. No paid APIs, no proprietary map SDKs in this baseline—the map uses **OpenStreetMap** raster tiles.
+**Flow:** the UI sends a GeoJSON Polygon (WGS84) → the backend normalizes/repairs with **Shapely**, computes bbox/area, optionally stores geometry → **pystac-client** queries Planetary Computer with **fixed sort/limit/filters** so results are reproducible. Responses can be **cached in-memory** by deterministic keys (bbox + collection + datetime window).
 
 ---
 
-## Repository layout
+## Prerequisites
 
-| Path | Role |
-|------|------|
-| `frontend/` | Vite + React SPA: landing shell (AOI, map, summary, layers, export placeholders). |
-| `backend/` | FastAPI app: `GET /api/v1/health`, `GET /api/v1/version`; expandable routers. |
-| `.env.example` | Copy to `backend/.env` — optional `CORS_ORIGINS` for extra dev origins. |
+- Python **3.11+**, [uv](https://docs.astral.sh/uv/) (or pip).
+- Node **20+**.
+- **Docker** (optional, for PostGIS) — AOI validation + STAC search work **without** Postgres; **saving** an AOI requires the DB.
 
 ---
 
-## Local development
+## 1. Database (optional but recommended)
 
-### Prerequisites
+```bash
+docker compose up -d
+```
 
-- **Python** 3.11+
-- **Node.js** 20+ (LTS recommended)
-- **[uv](https://docs.astral.sh/uv/)** for Python env management (or use `pip install -e ".[dev]"` inside `backend/`).
+Credentials match `.env.example` → copy to `backend/.env`.
 
-### Backend
+---
+
+## 2. Backend
 
 ```bash
 cd backend
-cp ../.env.example .env          # Linux / macOS / Git Bash
-copy ..\.env.example .env      # Windows PowerShell
+cp ../.env.example .env      # Linux/macOS/Git Bash
+copy ..\\.env.example .env    # Windows
 uv sync
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-- Docs: `http://127.0.0.1:8000/docs`
-- Health: `http://127.0.0.1:8000/api/v1/health`
-- Version: `http://127.0.0.1:8000/api/v1/version`
+Key endpoints:
 
-### Frontend
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/health` | Liveness + `database` flag |
+| POST | `/api/v1/aoi/validate` | Normalize & validate polygon; returns metadata |
+| POST | `/api/v1/aoi/` | Persist AOI (503 if DB down) |
+| GET | `/api/v1/aoi/{id}` | Fetch stored AOI |
+| POST | `/api/v1/datasets/search` | STAC search (`geometry` **xor** `aoi_id`) |
+
+Interactive docs: `/docs`
+
+---
+
+## 3. Frontend
 
 ```bash
 cd frontend
@@ -64,35 +67,27 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The dev server **proxies `/api`** to `http://127.0.0.1:8000` (see `vite.config.ts`).
-
-### Production build (frontend)
-
-```bash
-cd frontend
-npm run build
-npm run preview   # optional local check of dist/
-```
+Open `http://127.0.0.1:5173` — Vite proxies `/api` to port **8000**.
 
 ---
 
-## Constraints (baseline)
+## Data sources
 
-- No authentication, payments, or opaque “AI” features in this skeleton.
-- No Google Earth Engine; no Mapbox or other proprietary map APIs.
-- Dependencies are **stable, mainstream** releases (see `backend/pyproject.toml` and `frontend/package.json`).
+- **AOI footprint:** user-drawn or pasted lon/lat vertices (WGS84).
+- **STAC:** [Planetary Computer](https://planetarycomputer.microsoft.com/) `sentinel-2-l2a` metadata (public STAC; asset URLs are accessed via the official signing helpers when you extend downloads).
 
----
-
-## Next extension points
-
-1. **Routes:** Add `api/routes/aoi.py`, `analysis.py`, etc., and register them in `api/router.py`.
-2. **Services:** Implement `services/geospatial_analysis.py` (STAC + Rasterio + validation).
-3. **Persistence:** Introduce PostgreSQL/PostGIS behind SQLAlchemy or async drivers when needed.
-4. **Frontend:** Replace disabled controls with forms that call new endpoints; layer AOI GeoJSON on the Leaflet map.
+No paid geocoding, no Earth Engine, no proprietary map APIs — basemap tiles are **OpenStreetMap**.
 
 ---
 
-## License note
+## Limits & behavior
 
-Map attribution: © OpenStreetMap contributors. Use tile servers in line with [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+- AOI area capped by `max_aoi_area_km2` (see `backend/app/config.py`).
+- Invalid polygons return **400** with a clear reason; light repair (`buffer(0)`, ring closing) may emit **warnings**.
+- STAC queries use deterministic parameters; identical AOI bbox hit an in-process TTL cache (`metadata_cache_*` settings).
+
+---
+
+## Screenshots
+
+Drop PNGs in `docs/screenshots/` when presenting the UI.
