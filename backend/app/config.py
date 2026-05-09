@@ -21,8 +21,12 @@ class Settings(BaseSettings):
 
     max_aoi_area_km2: float = 500_000.0
 
+    analysis_max_aoi_area_km2: float = 75_000.0
+
     metadata_cache_ttl_seconds: int = 300
     metadata_cache_max_entries: int = 128
+
+    overpass_url: str = "https://overpass-api.de/api/interpreter"
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -114,3 +114,41 @@ export async function searchDatasets(params: {
   }
   return res.json() as Promise<DatasetSearchResponse>;
 }
+
+export type AnalysisIndicator = {
+  key: string;
+  label: string;
+  definition: string;
+  value: number | null;
+  unit: string;
+  caveat: string | null;
+};
+
+export type AnalysisRunResponse = {
+  partial_analysis: boolean;
+  caveats: string[];
+  area_km2: number;
+  indicators: AnalysisIndicator[];
+  infrastructure: { roads_length_km: number | null; nearest_waterway_km: number | null };
+  temporal: Record<string, unknown>;
+  risk: { score_0_100: number; explanation: string; component_notes: string[] };
+  narrative_summary: string;
+  machine_summary: Record<string, unknown>;
+};
+
+export async function runAnalysis(params: {
+  geometry?: GeoJSON.Polygon;
+  aoiId?: string;
+}): Promise<AnalysisRunResponse> {
+  const body = params.aoiId != null ? { aoi_id: params.aoiId } : { geometry: params.geometry };
+  const res = await fetch(`${API_BASE}/api/v1/analysis/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(parseFastApiDetail(err) || res.statusText);
+  }
+  return res.json() as Promise<AnalysisRunResponse>;
+}

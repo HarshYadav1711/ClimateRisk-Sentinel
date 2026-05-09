@@ -54,6 +54,7 @@ Key endpoints:
 | POST | `/api/v1/aoi/` | Persist AOI (503 if DB down) |
 | GET | `/api/v1/aoi/{id}` | Fetch stored AOI |
 | POST | `/api/v1/datasets/search` | STAC search (`geometry` **xor** `aoi_id`) |
+| POST | `/api/v1/analysis/run` | Geospatial indicators + heuristic risk index (`geometry` **xor** `aoi_id`) |
 
 Interactive docs: `/docs`
 
@@ -83,6 +84,7 @@ No paid geocoding, no Earth Engine, no proprietary map APIs — basemap tiles ar
 ## Limits & behavior
 
 - AOI area capped by `max_aoi_area_km2` (see `backend/app/config.py`).
+- **Analysis:** raster-derived proxies (e.g. vegetation / water / built-up indices from Sentinel-2) run only when the AOI is within `analysis_max_aoi_area_km2`; larger AOIs still return vector/OSM metrics where possible with explicit caveats. The composite score is a **transparent heuristic** for decision support — **not** a calibrated damage or flood forecast.
 - Invalid polygons return **400** with a clear reason; light repair (`buffer(0)`, ring closing) may emit **warnings**.
 - STAC queries use deterministic parameters; identical AOI bbox hit an in-process TTL cache (`metadata_cache_*` settings).
 

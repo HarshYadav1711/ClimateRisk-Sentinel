@@ -7,6 +7,7 @@ type Props = {
   onValidate: () => void;
   onSave: () => void;
   onSearchStac: () => void;
+  onRunAnalysis: () => void;
   busy: boolean;
   error: string | null;
   dbAvailable: boolean | null;
@@ -20,6 +21,7 @@ export function AoiInputSection({
   onValidate,
   onSave,
   onSearchStac,
+  onRunAnalysis,
   busy,
   error,
   dbAvailable,
@@ -71,6 +73,14 @@ export function AoiInputSection({
           className="rounded-lg border border-brand-700/50 px-3 py-2 text-sm font-medium text-brand-200 hover:bg-brand-950/40 disabled:opacity-40"
         >
           Search Sentinel-2 (STAC)
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRunAnalysis}
+          className="rounded-lg border border-emerald-800/80 bg-emerald-950/40 px-3 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-950/70 disabled:opacity-40"
+        >
+          Run analysis pipeline
         </button>
       </div>
       {dbAvailable === false ? (

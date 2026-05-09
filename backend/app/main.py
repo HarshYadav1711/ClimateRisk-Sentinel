@@ -60,4 +60,5 @@ def root() -> dict[str, str]:
         "aoi_validate": "/api/v1/aoi/validate",
         "aoi_save": "/api/v1/aoi/",
         "datasets_search": "/api/v1/datasets/search",
+        "analysis_run": "/api/v1/analysis/run",
     }

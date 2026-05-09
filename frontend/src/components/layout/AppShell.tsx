@@ -2,16 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchHealth,
   fetchVersion,
+  runAnalysis,
   saveAoi,
   searchDatasets,
   validateAoiGeometry,
   type AOIMetadata,
+  type AnalysisRunResponse,
   type DatasetSearchResponse,
   type VersionPayload,
 } from "../../lib/api";
 import { ensureClosedRing, polygonFromLonLatText } from "../../geo/polygonText";
 import type { GeoJsonPolygon } from "../../types/domain";
 import { AoiInputSection } from "../sections/AoiInputSection";
+import { AnalysisResultsSection } from "../sections/AnalysisResultsSection";
 import { AnalysisSummarySection } from "../sections/AnalysisSummarySection";
 import { LayersSection } from "../sections/LayersSection";
 import { MapSection } from "../sections/MapSection";
@@ -30,9 +33,11 @@ export function AppShell() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [savedAoiId, setSavedAoiId] = useState<string | null>(null);
   const [stacPreview, setStacPreview] = useState<DatasetSearchResponse | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisRunResponse | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [stacLoading, setStacLoading] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,6 +71,7 @@ export function AppShell() {
       setWarnings([]);
       setStacPreview(null);
       setSavedAoiId(null);
+      setAnalysisResult(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not parse coordinates.");
     }
@@ -80,6 +86,7 @@ export function AppShell() {
     setWarnings([]);
     setStacPreview(null);
     setSavedAoiId(null);
+    setAnalysisResult(null);
   }, []);
 
   const onClearDraw = useCallback(() => {
@@ -88,6 +95,7 @@ export function AppShell() {
     setMetadata(null);
     setWarnings([]);
     setStacPreview(null);
+    setAnalysisResult(null);
   }, []);
 
   const runValidate = useCallback(async () => {
@@ -103,6 +111,7 @@ export function AppShell() {
       setAoiGeometry(res.normalized_geometry as GeoJsonPolygon);
       setMetadata(res.metadata);
       setWarnings(res.warnings);
+      setAnalysisResult(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Validation failed.");
     } finally {
@@ -161,6 +170,36 @@ export function AppShell() {
     setError("Draw or paste an AOI (or save one), then search STAC.");
   }, [aoiGeometry, validatedGeometry, savedAoiId]);
 
+  const runAnalysisPipeline = useCallback(async () => {
+    setError(null);
+    const geom = validatedGeometry ?? aoiGeometry;
+    if (geom) {
+      setAnalysisLoading(true);
+      try {
+        const res = await runAnalysis({ geometry: geom });
+        setAnalysisResult(res);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Analysis failed.");
+      } finally {
+        setAnalysisLoading(false);
+      }
+      return;
+    }
+    if (savedAoiId) {
+      setAnalysisLoading(true);
+      try {
+        const res = await runAnalysis({ aoiId: savedAoiId });
+        setAnalysisResult(res);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Analysis failed.");
+      } finally {
+        setAnalysisLoading(false);
+      }
+      return;
+    }
+    setError("Validate or draw an AOI first, or save an AOI to analyze by id.");
+  }, [aoiGeometry, validatedGeometry, savedAoiId]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
@@ -199,7 +238,8 @@ export function AppShell() {
             onValidate={runValidate}
             onSave={runSave}
             onSearchStac={runStacSearch}
-            busy={busy || stacLoading}
+            onRunAnalysis={runAnalysisPipeline}
+            busy={busy || stacLoading || analysisLoading}
             error={error}
             dbAvailable={dbAvailable}
             savedAoiId={savedAoiId}
@@ -217,6 +257,7 @@ export function AppShell() {
             datasetPreview={stacPreview}
             loading={stacLoading}
           />
+          <AnalysisResultsSection result={analysisResult} loading={analysisLoading} />
           <ReportExportSection />
         </div>
       </main>

@@ -18,10 +18,12 @@ dependencies = [
   "planetary-computer>=1.0.0,<2",
   "numpy>=2.0.0,<3",
   "geopandas>=1.0.0,<2",
+  "rasterio>=1.4.0,<2",
+  "xarray>=2024.10.0,<2027",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.8.0"]
+dev = ["ruff>=0.8.0", "pytest>=8.0.0,<9"]
 
 [tool.ruff]
 line-length = 100
