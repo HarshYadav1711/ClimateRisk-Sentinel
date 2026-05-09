@@ -8,7 +8,10 @@ type Props = {
   onSave: () => void;
   onSearchStac: () => void;
   onRunAnalysis: () => void;
-  busy: boolean;
+  /** Validate / save API calls — blocks conflicting edits only. */
+  persistBusy: boolean;
+  stacLoading: boolean;
+  analysisLoading: boolean;
   error: string | null;
   dbAvailable: boolean | null;
   savedAoiId: string | null;
@@ -23,7 +26,9 @@ export function AoiInputSection({
   onSave,
   onSearchStac,
   onRunAnalysis,
-  busy,
+  persistBusy,
+  stacLoading,
+  analysisLoading,
   error,
   dbAvailable,
   savedAoiId,
@@ -45,7 +50,7 @@ export function AoiInputSection({
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={busy}
+          disabled={persistBusy}
           onClick={onApplyText}
           className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
         >
@@ -53,7 +58,7 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy || !apiOnline}
+          disabled={persistBusy || stacLoading || analysisLoading || !apiOnline}
           title={!apiOnline ? "Start the API to validate" : undefined}
           onClick={onValidate}
           className="rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 hover:border-brand-500 disabled:opacity-40"
@@ -62,7 +67,7 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy || !apiOnline || dbAvailable === false}
+          disabled={persistBusy || stacLoading || analysisLoading || !apiOnline || dbAvailable === false}
           title={
             !apiOnline ? "Start the API to save" : dbAvailable === false ? "Start Postgres (docker compose) to persist AOIs" : undefined
           }
@@ -73,21 +78,21 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy || !apiOnline}
+          disabled={stacLoading || !apiOnline}
           title={!apiOnline ? "Start the API to search STAC" : undefined}
           onClick={onSearchStac}
           className="rounded-lg border border-brand-700/50 px-3 py-2 text-sm font-medium text-brand-200 hover:bg-brand-950/40 disabled:opacity-40"
         >
-          Search Sentinel-2 (STAC)
+          {stacLoading ? "Searching STAC…" : "Search Sentinel-2 (STAC)"}
         </button>
         <button
           type="button"
-          disabled={busy || !apiOnline}
+          disabled={analysisLoading || !apiOnline}
           title={!apiOnline ? "Start the API to run analysis" : undefined}
           onClick={onRunAnalysis}
           className="rounded-lg border border-emerald-800/80 bg-emerald-950/40 px-3 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-950/70 disabled:opacity-40"
         >
-          Run analysis pipeline
+          {analysisLoading ? "Running analysis…" : "Run analysis pipeline"}
         </button>
       </div>
       {dbAvailable === false ? (

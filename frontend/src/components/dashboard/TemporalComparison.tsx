@@ -19,9 +19,25 @@ function formatIso(iso: string | null): string {
 
 type Props = {
   result: AnalysisRunResponse | null;
+  /** True while a new analysis run is in flight (first load or refresh). */
+  loading?: boolean;
 };
 
-export function TemporalComparison({ result }: Props) {
+export function TemporalComparison({ result, loading = false }: Props) {
+  if (!result && loading) {
+    return (
+      <div className="rounded-2xl border border-slate-800/90 bg-slate-950/25 px-5 py-8 ring-1 ring-white/[0.03] transition-opacity duration-300">
+        <div className="h-3 w-24 rounded bg-slate-800/90 animate-pulse" />
+        <div className="mt-4 h-6 w-48 rounded bg-slate-800/70 animate-pulse" />
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="h-24 rounded-xl bg-slate-900/50 animate-pulse" />
+          <div className="h-24 rounded-xl bg-slate-900/50 animate-pulse" />
+        </div>
+        <p className="mt-5 text-xs text-slate-500">Loading temporal context…</p>
+      </div>
+    );
+  }
+
   if (!result) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/20 px-5 py-8 text-center">
@@ -36,7 +52,16 @@ export function TemporalComparison({ result }: Props) {
   const hasDelta = typeof delta === "number";
 
   return (
-    <div className="rounded-2xl border border-slate-800/90 bg-slate-950/35 p-5 ring-1 ring-white/[0.03]">
+    <div
+      className={`rounded-2xl border border-slate-800/90 bg-slate-950/35 p-5 ring-1 ring-white/[0.03] transition-opacity duration-300 ${
+        loading ? "relative opacity-95 ring-brand-500/15" : ""
+      }`}
+    >
+      {loading ? (
+        <p className="mb-4 rounded-lg border border-brand-500/25 bg-brand-950/30 px-3 py-2 text-xs text-brand-100/95" role="status">
+          Updating temporal block…
+        </p>
+      ) : null}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Temporal</p>

@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 import logging
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
+from starlette.requests import Request
 
 from app.api.router import api_router
 from app.config import get_settings
@@ -43,6 +45,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @application.middleware("http")
+    async def timing_middleware(request: Request, call_next):
+        t0 = time.perf_counter()
+        response = await call_next(request)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.2f}"
+        if request.url.path.startswith("/api"):
+            _log.info("%s %s %.2fms", request.method, request.url.path, elapsed_ms)
+        return response
+
     application.include_router(api_router)
     return application
 

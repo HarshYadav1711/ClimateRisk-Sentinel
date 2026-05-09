@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import type { AnalysisRunResponse, DatasetSearchResponse } from "../../lib/api";
 import { scenesEvaluated } from "../../lib/analysisPayload";
 
@@ -5,6 +7,8 @@ type Props = {
   analysisResult: AnalysisRunResponse | null;
   stacPreview: DatasetSearchResponse | null;
   analysisLoading: boolean;
+  /** Progress copy from parent — avoids duplicate timers (rotating raster hints). */
+  progressHint?: string;
   aoiValidated: boolean;
   hasAoi: boolean;
 };
@@ -20,10 +24,14 @@ export function MapAnalysisContextPanel({
   analysisResult,
   stacPreview,
   analysisLoading,
+  progressHint,
   aoiValidated,
   hasAoi,
 }: Props) {
-  const scenes = analysisResult ? scenesEvaluated(analysisResult) : [];
+  const scenes = useMemo(
+    () => (analysisResult ? scenesEvaluated(analysisResult) : []),
+    [analysisResult],
+  );
   const latestScene = scenes[0]?.datetime ?? null;
   const firstItem = stacPreview?.items?.[0];
   const cloud =
@@ -59,6 +67,11 @@ export function MapAnalysisContextPanel({
         <dt className="text-slate-500">STAC · clouds</dt>
         <dd className="m-0 text-right font-mono text-slate-300">{cloud}</dd>
       </dl>
+      {analysisLoading && progressHint ? (
+        <p className="mt-2 border-t border-slate-800/80 pt-2 text-[10px] leading-snug text-slate-400 transition-opacity duration-300">
+          {progressHint}
+        </p>
+      ) : null}
       {analysisResult?.partial_analysis ? (
         <p className="mt-2 rounded-md border border-amber-900/50 bg-amber-950/35 px-2 py-1 text-amber-100/95" role="status">
           Partial analysis{partialNote ? ` · ${partialNote}` : ""}

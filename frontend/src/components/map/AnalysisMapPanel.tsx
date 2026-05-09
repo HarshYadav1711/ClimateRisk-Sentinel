@@ -1,5 +1,6 @@
 import L from "leaflet";
 import { useEffect, useMemo, useState } from "react";
+import { useAnalysisProgressHint } from "../../hooks/useAnalysisProgressHint";
 import {
   CircleMarker,
   GeoJSON as GeoJsonLayer,
@@ -130,6 +131,19 @@ export function AnalysisMapPanel({
   }, [analysisActive, layers.aoi]);
 
   const b = BASEMAPS[basemap];
+  const { hint: progressHint } = useAnalysisProgressHint(analysisLoading);
+  const [analysisElapsedSec, setAnalysisElapsedSec] = useState(0);
+  useEffect(() => {
+    if (!analysisLoading) {
+      setAnalysisElapsedSec(0);
+      return;
+    }
+    setAnalysisElapsedSec(0);
+    const id = window.setInterval(() => {
+      setAnalysisElapsedSec((s) => s + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [analysisLoading]);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-800/90 bg-slate-950/40 shadow-sm ring-1 ring-white/[0.04]">
@@ -311,6 +325,7 @@ export function AnalysisMapPanel({
                 analysisResult={analysisResult}
                 stacPreview={stacPreview}
                 analysisLoading={analysisLoading}
+                progressHint={progressHint}
                 aoiValidated={aoiValidated}
                 hasAoi={aoiGeometry !== null}
               />
@@ -374,6 +389,10 @@ export function AnalysisMapPanel({
                 aria-hidden
               />
               <p className="text-xs font-medium text-slate-300">Running analysis…</p>
+              <p className="max-w-[min(100%,20rem)] px-6 text-center text-[11px] leading-relaxed text-slate-400 transition-opacity duration-300">
+                {progressHint}
+              </p>
+              <p className="font-mono text-[10px] text-slate-600">{analysisElapsedSec}s elapsed</p>
               <p className="max-w-xs px-6 text-center text-[11px] text-slate-500">
                 Map stays usable — pipeline runs server-side.
               </p>

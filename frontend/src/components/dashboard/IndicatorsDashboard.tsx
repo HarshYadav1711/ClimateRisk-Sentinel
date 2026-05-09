@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import type { AnalysisIndicator, AnalysisRunResponse } from "../../lib/api";
 
 const INDICATOR_ORDER = [
@@ -25,16 +27,40 @@ type Props = {
   onClearResults: () => void;
 };
 
+function IndicatorSkeletonCard() {
+  return (
+    <div className="h-[4.5rem] rounded-xl border border-slate-800/80 bg-slate-950/30 animate-pulse ring-1 ring-white/[0.02]" />
+  );
+}
+
 export function IndicatorsDashboard({ result, loading, apiOnline, onClearResults }: Props) {
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-800/90 bg-slate-950/35 p-8 ring-1 ring-white/[0.03]">
-        <div className="flex items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-brand-500" />
-          <div>
-            <p className="text-sm font-medium text-slate-200">Computing indicators…</p>
-            <p className="mt-1 text-xs text-slate-500">Raster statistics and OSM proximity load over the network.</p>
+      <div className="space-y-6 transition-opacity duration-300">
+        <div className="rounded-2xl border border-slate-800/90 bg-slate-950/35 p-8 ring-1 ring-white/[0.03]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="h-10 w-10 shrink-0 animate-spin rounded-full border-2 border-slate-700 border-t-brand-500" aria-hidden />
+            <div className="min-w-0 flex-1 space-y-2">
+              <p className="text-sm font-medium text-slate-200">Computing indicators…</p>
+              <p className="text-xs leading-relaxed text-slate-500">
+                STAC scene selection, Sentinel-2 COG reads, and OSM proximity — typically dominated by raster I/O.
+              </p>
+            </div>
           </div>
+        </div>
+
+        <div className="grid gap-4 rounded-2xl border border-slate-800/90 bg-gradient-to-br from-slate-950/80 to-slate-900/40 p-6 ring-1 ring-white/[0.04] sm:grid-cols-[1fr_auto]">
+          <div className="space-y-2">
+            <div className="h-3 w-40 rounded bg-slate-800/90 animate-pulse" />
+            <div className="h-3 w-full max-w-md rounded bg-slate-800/60 animate-pulse" />
+          </div>
+          <div className="h-12 w-24 shrink-0 rounded-lg bg-slate-800/70 animate-pulse sm:justify-self-end" />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <IndicatorSkeletonCard key={i} />
+          ))}
         </div>
       </div>
     );
@@ -64,9 +90,11 @@ export function IndicatorsDashboard({ result, loading, apiOnline, onClearResults
     );
   }
 
-  const sorted = [...result.indicators].sort(
-    (a, b) => INDICATOR_ORDER.indexOf(a.key) - INDICATOR_ORDER.indexOf(b.key),
-  );
+  const sortedIndicators = useMemo(() => {
+    return [...result.indicators].sort(
+      (a, b) => INDICATOR_ORDER.indexOf(a.key) - INDICATOR_ORDER.indexOf(b.key),
+    );
+  }, [result.indicators]);
 
   return (
     <div className="space-y-6">
@@ -131,7 +159,7 @@ export function IndicatorsDashboard({ result, loading, apiOnline, onClearResults
 
       {/* Metric grid */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {sorted.map((ind) => (
+        {sortedIndicators.map((ind) => (
           <details
             key={ind.key}
             className="group rounded-xl border border-slate-800/90 bg-slate-950/45 px-4 py-3 ring-1 ring-white/[0.03] open:ring-brand-500/15"

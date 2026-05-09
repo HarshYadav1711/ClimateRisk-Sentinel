@@ -82,7 +82,9 @@ export function AppShell() {
                 onSave={w.runSave}
                 onSearchStac={w.runStacSearch}
                 onRunAnalysis={w.runAnalysisPipeline}
-                busy={w.busy || w.stacLoading || w.analysisLoading}
+                persistBusy={w.busy}
+                stacLoading={w.stacLoading}
+                analysisLoading={w.analysisLoading}
                 error={w.error}
                 dbAvailable={w.dbAvailable}
                 savedAoiId={w.savedAoiId}
@@ -104,9 +106,12 @@ export function AppShell() {
                 onClearResults={w.clearAnalysis}
               />
 
-              <InfrastructureSnapshot result={w.analysisResult} />
+              <InfrastructureSnapshot
+                result={w.analysisResult}
+                analysisRefreshing={w.analysisLoading && w.analysisResult !== null}
+              />
 
-              <TemporalComparison result={w.analysisResult} />
+              <TemporalComparison result={w.analysisResult} loading={w.analysisLoading} />
 
               <NarrativeBrief narrative={w.analysisResult?.narrative_summary ?? null} />
 

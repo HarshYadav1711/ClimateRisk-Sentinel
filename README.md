@@ -54,8 +54,6 @@ flowchart LR
 
 ## Screenshots & visuals
 
-Use these for decks, README polish, and onboarding—replace placeholders as you capture real UI.
-
 | Asset | Use |
 | --- | --- |
 | [`docs/screenshots/ui-overview.svg`](docs/screenshots/ui-overview.svg) | **Diagrammatic** map + dashboard + workflow layout (non-photographic). |
