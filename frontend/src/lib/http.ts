@@ -38,7 +38,7 @@ export async function fetchJson<T>(url: string, init?: FetchJsonOptions): Promis
     }
     if (e instanceof TypeError) {
       throw new Error(
-        "Cannot reach the API. Start the backend (see README), ensure it listens on port 8000, and that the Vite dev proxy is enabled.",
+        "Cannot reach the API. For local dev, run the backend and keep the Vite `/api` proxy enabled. For hosted UI, set `VITE_API_BASE_URL` to your API origin (see README).",
       );
     }
     throw e instanceof Error ? e : new Error("Network request failed.");

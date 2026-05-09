@@ -1,0 +1,19 @@
+# Render blueprint (optional): https://render.com/docs/blueprint-spec
+# Edit `service name` / region before deploy. Connect GitHub → New Blueprint Instance.
+
+services:
+  - type: web
+    name: climate-risk-sentinel-api
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install uv && uv sync
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false

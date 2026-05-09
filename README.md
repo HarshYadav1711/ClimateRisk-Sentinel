@@ -112,7 +112,9 @@ Copy the example env and tune for your machine:
 cp .env.example backend/.env
 ```
 
-Key variables (see `backend/app/config.py` for full list): `DATABASE_URL` / `database_url`, STAC catalog URL, datetime preset vs rolling lookback, AOI and analysis area caps, Overpass endpoint, CORS (`cors_origins` for non-local frontends).
+For frontend-only overrides locally: copy **`frontend/.env.example`** → **`frontend/.env.local`** (optional).
+
+Key variables (see `backend/app/config.py` for full list): `DATABASE_URL`, STAC catalog URL, datetime preset vs rolling lookback, AOI and analysis area caps, Overpass endpoint, **`CORS_ORIGINS`** for hosted UIs.
 
 Without Postgres, **validate**, **STAC search**, and **analysis** still work; **persist AOI** (`POST /api/v1/aoi/`) returns **503** if the DB is unavailable.
 
@@ -138,9 +140,9 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite **proxies `/api`** to `http://127.0.0.1:8000`.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite **proxies `/api`** to the backend (`VITE_DEV_PROXY_API` overrides the default target — see `frontend/.env.example`).
 
-**Production:** `npm run build` → serve `frontend/dist` behind a reverse proxy; route **`/api`** to the same FastAPI host.
+**Production build (same-origin or CDN):** `npm run build` → serve `frontend/dist`; if the API is on another host, set **`VITE_API_BASE_URL`** at build time to the API origin (see **Deployment**).
 
 ### Tests (backend)
 
@@ -149,6 +151,57 @@ cd backend
 uv sync --extra dev
 uv run python -m pytest
 ```
+
+---
+
+## Deployment (lightweight)
+
+Use **split hosting**: static UI (e.g. **Vercel**) + containerless Python API (**Render**, **Railway**, **Fly.io** buildpacks). No Kubernetes required. Local workflows stay the same.
+
+### Environment variables
+
+| Where | Variable | Purpose |
+| --- | --- | --- |
+| **Frontend build** | `VITE_API_BASE_URL` | Public **origin** of the FastAPI app, **no trailing slash** (e.g. `https://climate-risk-api.onrender.com`). Omit for local dev — the UI calls relative `/api/...` and Vite proxies to the backend. |
+| **Frontend dev** | `VITE_DEV_PROXY_API` | Optional override for where Vite proxies `/api` (default `http://127.0.0.1:8000`). |
+| **Backend** | `CORS_ORIGINS` | Comma-separated **browser** origins allowed to call the API (e.g. `https://your-app.vercel.app`). Required when the UI and API are on different sites; see `backend/app/config.py`. |
+| **Backend** | `DATABASE_URL` | Optional Postgres; analysis works without DB (AOI save returns 503 if absent). |
+
+Templates: **`.env.example`** (repo root, backend + frontend notes) and **`frontend/.env.example`**.
+
+### Frontend (Vercel-friendly)
+
+1. Connect the repo; set **Root Directory** to **`frontend`**.  
+2. **Build**: `npm ci` / `npm install` then **`npm run build`** (defaults match **`frontend/vercel.json`**).  
+3. **Output**: `dist`.  
+4. **Environment (Production):** set **`VITE_API_BASE_URL`** to your deployed API URL before each build.  
+
+`frontend/vercel.json` adds SPA **`rewrites`** so client routing resolves to `index.html`.
+
+### Backend (Render / Railway / Fly)
+
+**Common pattern**
+
+| Step | Command / note |
+| --- | --- |
+| Root directory | **`backend`** (not repo root on platform UI). |
+| Install | `pip install uv && uv sync` (or equivalent — keep **`uv.lock`** committed). |
+| Start | `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT` — platforms inject **`PORT`**. |
+
+**Artifacts in this repo**
+
+| File | Platform |
+| --- | --- |
+| **`render.yaml`** | Optional **Render Blueprint** (edit service name / env before deploy). |
+| **`backend/Procfile`** | **Railway** / Heroku-style **`web`** process when root dir is `backend`. |
+
+Set **`CORS_ORIGINS`** and optional **`DATABASE_URL`** in the host’s dashboard. Use a managed free-tier Postgres only if you need AOI persistence.
+
+### Notes
+
+- **HTTPS:** Terminate TLS at the edge; keep **`CORS_ORIGINS`** aligned with your real UI URLs (scheme + host, no path).  
+- **Cold starts:** Free tiers may sleep — first analysis after idle can be slower; caveats still apply.  
+- **Secrets:** Never commit `.env`; use host secrets / env UI.
 
 ---
 
@@ -172,8 +225,11 @@ uv run python -m pytest
 backend/app           FastAPI app, config, services, db
 backend/tests         Focused tests (geometry, heuristics, API smoke)
 frontend/src          React UI, hooks, API client, map
+frontend/vercel.json  SPA rewrites for static hosts (e.g. Vercel)
+render.yaml           Optional Render Blueprint for the API
+backend/Procfile      Optional Railway / Procfile-compatible start command
+.env.example          Backend + frontend env documentation (copy to backend/.env)
 docs/screenshots      UI overview SVG; optional PNG captures
-.env.example          Copy to backend/.env
 docker-compose.yml    Optional PostGIS
 ```
 

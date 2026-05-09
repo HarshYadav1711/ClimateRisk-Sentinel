@@ -1,0 +1,4 @@
+# Process type for Railway / Heroku-style hosts (Linux). Set root directory to `backend`
+# in the platform UI and configure `PORT`. Render typically uses startCommand from render.yaml instead.
+
+web: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT

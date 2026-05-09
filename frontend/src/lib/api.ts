@@ -1,6 +1,19 @@
 import { fetchJson } from "./http";
 
-const API_BASE = "";
+/**
+ * Split hosting: set `VITE_API_BASE_URL` to the public API origin (no trailing slash), e.g.
+ * `https://climate-risk-api.onrender.com`. Omit or leave empty for local dev — requests use
+ * relative `/api/...` and the Vite dev proxy.
+ */
+function apiBaseUrl(): string {
+  const raw = import.meta.env.VITE_API_BASE_URL;
+  if (raw == null || typeof raw !== "string") return "";
+  const t = raw.trim();
+  if (!t) return "";
+  return t.replace(/\/+$/, "");
+}
+
+const API_BASE = apiBaseUrl();
 
 export type HealthPayload = {
   status: string;
