@@ -17,6 +17,7 @@ import {
   stacItemBboxToBounds,
 } from "./mapOverlayHelpers";
 import { DrawPolygonToolbar } from "./DrawPolygonToolbar";
+import { NdviContextOverlay } from "./NdviContextOverlay";
 
 type BasemapId = "neutral" | "street";
 
@@ -35,7 +36,7 @@ type LayerState = {
   aoi: boolean;
   centroid: boolean;
   footprintBbox: boolean;
-  heatTint: boolean;
+  ndviVisualContext: boolean;
   contextGuides: boolean;
   stacFootprint: boolean;
 };
@@ -89,7 +90,7 @@ export function AnalysisMapPanel({
     aoi: true,
     centroid: true,
     footprintBbox: true,
-    heatTint: false,
+    ndviVisualContext: false,
     contextGuides: true,
     stacFootprint: false,
   });
@@ -98,19 +99,6 @@ export function AnalysisMapPanel({
     const row = analysisResult?.indicators?.find((i) => i.key === "ndvi_mean");
     return typeof row?.value === "number" ? row.value : null;
   }, [analysisResult]);
-
-  const heatStyle = useMemo(() => {
-    const base = { color: "#10b981", weight: 5, opacity: 0.22, fillColor: "#34d399", fillOpacity: 0.1 };
-    if (ndviMean == null || Number.isNaN(ndviMean)) return base;
-    const t = Math.max(0, Math.min(1, (ndviMean + 1) / 2));
-    return {
-      color: "#34d399",
-      weight: 4 + t * 4,
-      opacity: 0.15 + t * 0.2,
-      fillColor: "#10b981",
-      fillOpacity: 0.06 + t * 0.14,
-    };
-  }, [ndviMean]);
 
   const stacBounds = useMemo(() => {
     const first = stacPreview?.items?.[0];
@@ -182,6 +170,13 @@ export function AnalysisMapPanel({
           >
             <TileLayer attribution={b.attribution} url={b.url} />
             <FitAoi geojson={aoiGeometry} />
+            <NdviContextOverlay
+              geometry={aoiGeometry}
+              visible={layers.ndviVisualContext}
+              ndviMean={ndviMean}
+              analysisLoading={analysisLoading}
+              hasAnalysisResult={analysisResult !== null}
+            />
             {metadata?.bbox && layers.footprintBbox ? (
               <Rectangle
                 bounds={aoiMetadataToBounds(metadata.bbox)}
@@ -205,12 +200,6 @@ export function AnalysisMapPanel({
                   fillOpacity: 0.05,
                   dashArray: "3 5",
                 }}
-              />
-            ) : null}
-            {layers.heatTint && aoiGeometry ? (
-              <GeoJsonLayer
-                data={aoiGeometry as unknown as GeoJSON.GeoJsonObject}
-                style={heatStyle}
               />
             ) : null}
             {aoiGeometry ? (
@@ -269,15 +258,20 @@ export function AnalysisMapPanel({
                   />
                 </label>
                 <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
-                  <span>Index halo (NDVI proxy)</span>
+                  <span className="leading-snug">NDVI visual context</span>
                   <input
                     type="checkbox"
-                    checked={layers.heatTint}
+                    checked={layers.ndviVisualContext}
                     disabled={!aoiGeometry}
-                    onChange={(e) => setLayers((s) => ({ ...s, heatTint: e.target.checked }))}
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
+                    onChange={(e) =>
+                      setLayers((s) => ({ ...s, ndviVisualContext: e.target.checked }))
+                    }
+                    className="h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
                   />
                 </label>
+                {layers.ndviVisualContext && analysisLoading ? (
+                  <p className="text-[11px] leading-snug text-slate-500">Tint refreshing…</p>
+                ) : null}
                 <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
                   <span>Context guides</span>
                   <input
@@ -324,7 +318,22 @@ export function AnalysisMapPanel({
 
             <div className="pointer-events-auto ml-auto mt-auto max-w-[min(100%,17rem)] rounded-xl border border-slate-800/90 bg-slate-950/85 p-3 text-[11px] leading-relaxed text-slate-400 shadow-lg backdrop-blur-md transition-colors duration-200">
               <p className="font-semibold uppercase tracking-wide text-slate-500">Legend</p>
-              <ul className="mt-2 space-y-2">
+              <div className="mt-3 border-t border-slate-800/80 pt-3">
+                <p className="font-medium text-slate-400">NDVI visual analytical context</p>
+                <p className="mt-1 leading-snug text-slate-500">
+                  AOI tint derived from analysis mean NDVI — illustrative blend clipped to your polygon, not a
+                  sub-pixel classification or satellite image.
+                </p>
+                <div
+                  className="mt-2 h-3 w-full rounded-sm bg-gradient-to-r from-[rgb(118,72,46)] via-[rgb(168,145,85)] to-[rgb(13,148,115)] ring-1 ring-slate-700/90"
+                  aria-hidden
+                />
+                <div className="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-slate-600">
+                  <span>Low</span>
+                  <span>High</span>
+                </div>
+              </div>
+              <ul className="mt-3 space-y-2 border-t border-slate-800/80 pt-3">
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm border-2 border-emerald-400 bg-emerald-400/15" />
                   <span>AOI after analysis</span>
@@ -344,6 +353,10 @@ export function AnalysisMapPanel({
                 <li className="flex items-start gap-2">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-cyan-300 ring-2 ring-cyan-500/40" />
                   <span>Centroid</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 h-3 w-8 shrink-0 rounded-sm bg-gradient-to-r from-amber-900/80 via-lime-900/50 to-emerald-700/90 opacity-90 ring-1 ring-slate-600/50" />
+                  <span>NDVI visual context (toggle)</span>
                 </li>
               </ul>
             </div>
@@ -369,8 +382,8 @@ export function AnalysisMapPanel({
         </div>
 
         <p className="mt-4 text-xs leading-relaxed text-slate-500">
-          Draw tools: top-right on the map. Toggle overlays to relate footprint, catalog bbox, and NDVI-weighted halo to
-          tabular results.
+          Draw tools: top-right on the map. Toggle overlays to relate footprint, catalog bbox, and optional NDVI visual
+          context to tabular indicators.
         </p>
       </div>
     </section>
