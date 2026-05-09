@@ -1,0 +1,1 @@
+"""ClimateRisk Sentinel FastAPI application."""
