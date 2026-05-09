@@ -124,13 +124,21 @@ export type AnalysisIndicator = {
   caveat: string | null;
 };
 
+/** Mirrors backend `temporal` — dates are fixed by the pipeline (not user-selectable). */
+export type AnalysisTemporal = {
+  ndvi_delta?: number | null;
+  newer_scene_id?: string;
+  older_scene_id?: string;
+  summary_sentence?: string;
+};
+
 export type AnalysisRunResponse = {
   partial_analysis: boolean;
   caveats: string[];
   area_km2: number;
   indicators: AnalysisIndicator[];
   infrastructure: { roads_length_km: number | null; nearest_waterway_km: number | null };
-  temporal: Record<string, unknown>;
+  temporal: AnalysisTemporal & Record<string, unknown>;
   risk: { score_0_100: number; explanation: string; component_notes: string[] };
   narrative_summary: string;
   machine_summary: Record<string, unknown>;

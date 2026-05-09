@@ -13,11 +13,13 @@ import {
 } from "../../lib/api";
 import { ensureClosedRing, polygonFromLonLatText } from "../../geo/polygonText";
 import type { GeoJsonPolygon } from "../../types/domain";
+import { InfrastructureSnapshot } from "../dashboard/InfrastructureSnapshot";
+import { IndicatorsDashboard } from "../dashboard/IndicatorsDashboard";
+import { NarrativeBrief } from "../dashboard/NarrativeBrief";
+import { TemporalComparison } from "../dashboard/TemporalComparison";
+import { AnalysisMapPanel } from "../map/AnalysisMapPanel";
 import { AoiInputSection } from "../sections/AoiInputSection";
-import { AnalysisResultsSection } from "../sections/AnalysisResultsSection";
 import { AnalysisSummarySection } from "../sections/AnalysisSummarySection";
-import { LayersSection } from "../sections/LayersSection";
-import { MapSection } from "../sections/MapSection";
 import { ReportExportSection } from "../sections/ReportExportSection";
 import { StacPreviewSection } from "../sections/StacPreviewSection";
 
@@ -59,6 +61,10 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const clearAnalysis = useCallback(() => {
+    setAnalysisResult(null);
   }, []);
 
   const applyTextCoords = useCallback(() => {
@@ -200,70 +206,104 @@ export function AppShell() {
     setError("Validate or draw an AOI first, or save an AOI to analyze by id.");
   }, [aoiGeometry, validatedGeometry, savedAoiId]);
 
+  const centroid =
+    metadata?.centroid != null &&
+    typeof metadata.centroid.lon === "number" &&
+    typeof metadata.centroid.lat === "number"
+      ? { lon: metadata.centroid.lon, lat: metadata.centroid.lat }
+      : null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
-      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 sm:flex-row sm:items-end sm:justify-between lg:px-8">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-brand-500">
-              Climate intelligence
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">ClimateRisk Sentinel</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-              AOI ingestion, validation, and Planetary Computer STAC discovery — open data only, reproducible
-              queries.
-            </p>
-          </div>
-          <div className="text-right text-xs text-slate-500">
-            {version ? (
-              <>
-                <p className="font-mono text-slate-300">
-                  API {version.api_version} · {version.version}
-                </p>
-                <p className="mt-1">{version.name}</p>
-              </>
-            ) : (
-              <p>{backendError ?? "Connecting to API…"}</p>
-            )}
+    <div className="min-h-screen bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(34,211,238,0.07),transparent)] bg-slate-950">
+      <header className="border-b border-slate-800/90 bg-slate-950/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 lg:px-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-brand-500/95">
+                Climate intelligence
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                ClimateRisk Sentinel
+              </h1>
+              <p className="mt-4 text-base leading-relaxed text-slate-400">
+                Define an area once — validate it, screen it with open data, and read an explainable summary. Built for
+                fast orientation, not hidden models.
+              </p>
+              <p className="mt-5 inline-flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
+                <span>Open data sources</span>
+                <span className="text-slate-700">·</span>
+                <span>Heuristic indices</span>
+                <span className="text-slate-700">·</span>
+                <span>Not a damage forecast</span>
+              </p>
+            </div>
+            <div className="shrink-0 text-left text-xs text-slate-500 lg:text-right">
+              {version ? (
+                <>
+                  <p className="font-mono text-sm text-slate-300">
+                    API {version.api_version} · {version.version}
+                  </p>
+                  <p className="mt-2">{version.name}</p>
+                </>
+              ) : (
+                <p className="text-slate-400">{backendError ?? "Connecting to API…"}</p>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-10 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <AoiInputSection
-            coordsText={coordsText}
-            onCoordsChange={setCoordsText}
-            onApplyText={applyTextCoords}
-            onValidate={runValidate}
-            onSave={runSave}
-            onSearchStac={runStacSearch}
-            onRunAnalysis={runAnalysisPipeline}
-            busy={busy || stacLoading || analysisLoading}
-            error={error}
-            dbAvailable={dbAvailable}
-            savedAoiId={savedAoiId}
+      <main className="mx-auto max-w-7xl px-4 py-10 lg:px-10">
+        <div className="space-y-12">
+          <AnalysisMapPanel
+            aoiGeometry={aoiGeometry}
+            centroid={centroid}
+            analysisActive={analysisResult !== null}
+            analysisLoading={analysisLoading}
+            onDrawPolygon={onDrawPolygon}
+            onClearDraw={onClearDraw}
           />
-          <LayersSection />
-          <div className="lg:col-span-2">
-            <MapSection
-              aoiGeometry={aoiGeometry}
-              onDrawPolygon={onDrawPolygon}
-              onClearDraw={onClearDraw}
-            />
+
+          <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
+            <div className="space-y-8 lg:col-span-5">
+              <AoiInputSection
+                coordsText={coordsText}
+                onCoordsChange={setCoordsText}
+                onApplyText={applyTextCoords}
+                onValidate={runValidate}
+                onSave={runSave}
+                onSearchStac={runStacSearch}
+                onRunAnalysis={runAnalysisPipeline}
+                busy={busy || stacLoading || analysisLoading}
+                error={error}
+                dbAvailable={dbAvailable}
+                savedAoiId={savedAoiId}
+              />
+              <AnalysisSummarySection metadata={metadata} warnings={warnings} />
+              <StacPreviewSection datasetPreview={stacPreview} loading={stacLoading} />
+            </div>
+
+            <div className="space-y-8 lg:col-span-7">
+              <IndicatorsDashboard
+                result={analysisResult}
+                loading={analysisLoading}
+                onClearResults={clearAnalysis}
+              />
+
+              <InfrastructureSnapshot result={analysisResult} />
+
+              <TemporalComparison result={analysisResult} />
+
+              <NarrativeBrief narrative={analysisResult?.narrative_summary ?? null} />
+
+              <ReportExportSection result={analysisResult} />
+            </div>
           </div>
-          <AnalysisSummarySection metadata={metadata} warnings={warnings} />
-          <StacPreviewSection
-            datasetPreview={stacPreview}
-            loading={stacLoading}
-          />
-          <AnalysisResultsSection result={analysisResult} loading={analysisLoading} />
-          <ReportExportSection />
         </div>
       </main>
 
-      <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-600">
-        AOI pipeline · Microsoft Planetary Computer STAC · Map tiles © OpenStreetMap contributors
+      <footer className="border-t border-slate-800/90 py-10 text-center text-xs leading-relaxed text-slate-600">
+        <p>Planetary Computer STAC · OpenStreetMap · Map tiles © OpenStreetMap contributors</p>
       </footer>
     </div>
   );

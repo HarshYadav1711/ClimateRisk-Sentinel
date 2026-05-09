@@ -10,7 +10,7 @@ export function AnalysisSummarySection({ metadata, warnings }: Props) {
   return (
     <SectionCard
       title="Analysis summary"
-      subtitle="Bounding box and footprint metrics after validation — indicators plug in here later."
+      subtitle="Area and footprint after API normalization — validate before running analysis."
     >
       {metadata ? (
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
