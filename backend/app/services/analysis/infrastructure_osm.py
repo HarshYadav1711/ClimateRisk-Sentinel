@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 
 import httpx
 from pyproj import Geod
 from shapely.geometry import LineString, Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import nearest_points
 
 from app.config import get_settings
+
+_log = logging.getLogger(__name__)
 
 _GEOD = Geod(ellps="WGS84")
 
@@ -24,6 +29,21 @@ def _segment_length_m(coords: list[tuple[float, float]]) -> float:
         _, _, dist = _GEOD.inv(lon1, lat1, lon2, lat2)
         total += abs(dist)
     return total
+
+
+def _linear_geom_length_m(geom: BaseGeometry) -> float:
+    """Great-circle length (m) along LineString / MultiLineString parts; ignores non-linear pieces."""
+    if geom.is_empty:
+        return 0.0
+    gt = geom.geom_type
+    if gt == "LineString":
+        coords = [(float(x), float(y)) for x, y, *_ in geom.coords]
+        return _segment_length_m(coords)
+    if gt == "MultiLineString":
+        return sum(_linear_geom_length_m(g) for g in geom.geoms)
+    if gt == "GeometryCollection":
+        return sum(_linear_geom_length_m(g) for g in geom.geoms)
+    return 0.0
 
 
 @dataclass(frozen=True)
@@ -53,13 +73,36 @@ def fetch_infrastructure_metrics(aoi: Polygon) -> InfrastructureMetrics:
             r = client.post(settings.overpass_url, data={"data": query})
             r.raise_for_status()
             data = r.json()
-    except Exception as exc:  # noqa: BLE001
-        caveats.append(f"OpenStreetMap Overpass unavailable: {exc}")
+    except httpx.HTTPStatusError as exc:
+        _log.warning("Overpass HTTPStatusError status=%s url=%s", exc.response.status_code, settings.overpass_url)
+        caveats.append(f"OpenStreetMap Overpass HTTP error: {exc}")
         return InfrastructureMetrics(
             roads_length_km=None,
             nearest_waterway_km=None,
             caveats=tuple(caveats),
         )
+    except httpx.RequestError as exc:
+        _log.warning("Overpass RequestError: %s", exc)
+        caveats.append(f"OpenStreetMap Overpass unavailable (network): {exc}")
+        return InfrastructureMetrics(
+            roads_length_km=None,
+            nearest_waterway_km=None,
+            caveats=tuple(caveats),
+        )
+    except json.JSONDecodeError as exc:
+        _log.warning("Overpass JSONDecodeError: %s", exc)
+        caveats.append(f"OpenStreetMap Overpass returned invalid JSON: {exc}")
+        return InfrastructureMetrics(
+            roads_length_km=None,
+            nearest_waterway_km=None,
+            caveats=tuple(caveats),
+        )
+
+    # Overpass uses the AOI bbox to limit downloads; attributing the *full* length of every way that merely crosses the bbox inflates road density (bbox corners, segments outside the polygon). Clip highways to the AOI for length.
+    try:
+        aoi_clip = aoi if aoi.is_valid else aoi.buffer(0)
+    except Exception:
+        aoi_clip = aoi
 
     elements = data.get("elements", [])
     road_m = 0.0
@@ -76,7 +119,12 @@ def fetch_infrastructure_metrics(aoi: Polygon) -> InfrastructureMetrics:
         if len(coords) < 2:
             continue
         if "highway" in tags:
-            road_m += _segment_length_m(coords)
+            try:
+                line = LineString(coords)
+                clipped = line.intersection(aoi_clip)
+                road_m += _linear_geom_length_m(clipped)
+            except Exception:
+                continue
         if "waterway" in tags:
             water_lines.append(LineString(coords))
 

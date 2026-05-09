@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from shapely.geometry import Polygon
 
 from app.config import Settings, get_settings
-from app.services.analysis.infrastructure_osm import InfrastructureMetrics, fetch_infrastructure_metrics
+from app.services.analysis.cache_store import (
+    get_cached_analysis_report,
+    get_infrastructure_metrics_cached,
+    set_cached_analysis_report,
+)
+from app.services.analysis.infrastructure_osm import InfrastructureMetrics
 from app.services.analysis.raster_readout import SceneKpis, compute_scene_kpis
 from app.services.analysis.risk_heuristic import explain_heuristic_score
 from app.services.analysis.stac_items import list_signed_items_for_temporal_analysis
 from app.services.analysis.temporal_summary import temporal_block
 from app.services.geometry import area_km2_epsg6933
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,6 +42,16 @@ class AnalysisReport:
 
 def run_aoi_analysis(aoi: Polygon, settings: Settings | None = None) -> AnalysisReport:
     settings = settings or get_settings()
+    t0 = time.perf_counter()
+    cached_report = get_cached_analysis_report(aoi)
+    if cached_report is not None:
+        _log.info(
+            "analysis_pipeline duration_s=%.4f cache=report_hit area_km2=%.4f",
+            time.perf_counter() - t0,
+            cached_report.area_km2,
+        )
+        return cached_report
+
     report = AnalysisReport(area_km2=area_km2_epsg6933(aoi))
 
     if report.area_km2 > settings.analysis_max_aoi_area_km2:
@@ -41,7 +60,7 @@ def run_aoi_analysis(aoi: Polygon, settings: Settings | None = None) -> Analysis
             f"{settings.analysis_max_aoi_area_km2:.0f} km² — "
             "skipping raster downloads; infrastructure metrics still computed."
         )
-        infra = fetch_infrastructure_metrics(aoi)
+        infra = get_infrastructure_metrics_cached(aoi)
         report.infrastructure = infra
         report.caveats.extend(list(infra.caveats))
         rd = (
@@ -62,9 +81,15 @@ def run_aoi_analysis(aoi: Polygon, settings: Settings | None = None) -> Analysis
         report.risk_explanation = expl
         report.risk_components = parts
         report.narrative_paragraphs = _narrative(report, raster_skipped=True)
+        set_cached_analysis_report(aoi, report)
+        _log.info(
+            "analysis_pipeline duration_s=%.3f cache=miss area_km2=%.4f scenes=0 raster_skipped_size_limit",
+            time.perf_counter() - t0,
+            report.area_km2,
+        )
         return report
 
-    infra = fetch_infrastructure_metrics(aoi)
+    infra = get_infrastructure_metrics_cached(aoi)
     report.infrastructure = infra
     report.caveats.extend(list(infra.caveats))
 
@@ -109,6 +134,13 @@ def run_aoi_analysis(aoi: Polygon, settings: Settings | None = None) -> Analysis
     report.risk_explanation = expl
     report.risk_components = parts
     report.narrative_paragraphs = _narrative(report, raster_skipped=False)
+    set_cached_analysis_report(aoi, report)
+    _log.info(
+        "analysis_pipeline duration_s=%.3f cache=miss area_km2=%.4f scenes=%d",
+        time.perf_counter() - t0,
+        report.area_km2,
+        len(report.scenes),
+    )
     return report
 
 

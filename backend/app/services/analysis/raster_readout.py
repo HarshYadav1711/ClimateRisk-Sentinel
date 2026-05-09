@@ -5,8 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import logging
+
 import numpy as np
 import rasterio
+import rasterio.errors
 import xarray as xr
 from pystac import Item
 from rasterio.mask import mask
@@ -15,13 +18,25 @@ from shapely.geometry import Polygon, mapping
 
 from app.services.analysis.pure_indicators import masked_mean, ndbi, ndvi, ndwi_green_nir
 
+_log = logging.getLogger(__name__)
+
 
 def _geom_mask_transform(href: str, polygon_wgs84: Polygon) -> tuple[np.ndarray, Any, Any]:
     with rasterio.open(href) as src:
         geom_src = transform_geom("EPSG:4326", src.crs.to_string(), mapping(polygon_wgs84))
         out, out_transform = mask(src, [geom_src], crop=True, filled=False)
         arr = np.ma.masked_invalid(out[0].astype(np.float32))
-        arr = np.ma.masked_where(arr == 0, arr)
+        # Blanket masking arr == 0 is unsafe: DN 0 can be valid (dark targets, very low reflectance after scaling).
+        # Mask only GDAL-declared nodata plus NaN/inf (above); omit masking when nodata is absent.
+        nodata_val: float | int | None = None
+        if src.nodatavals and src.nodatavals[0] is not None:
+            nodata_val = src.nodatavals[0]
+        elif src.nodata is not None:
+            nodata_val = src.nodata
+        if nodata_val is not None:
+            nv = np.float32(nodata_val)
+            if np.isfinite(nv):
+                arr = np.ma.masked_where(arr == nv, arr)
         return arr, out_transform, src.crs
 
 
@@ -114,5 +129,14 @@ def compute_scene_kpis(aoi: Polygon, signed_item: Item) -> SceneKpis | None:
             ndwi_mean=ndwi_m,
             ndbi_mean=ndbi_m,
         )
-    except Exception:
+    except (rasterio.errors.RasterioIOError, OSError, ValueError, KeyError, TypeError) as exc:
+        _log.warning("Raster KPI read failed scene_id=%s: %s", signed_item.id, exc)
+        return None
+    except Exception as exc:
+        _log.warning(
+            "Raster KPI read failed scene_id=%s (unexpected): %s",
+            signed_item.id,
+            exc,
+            exc_info=True,
+        )
         return None

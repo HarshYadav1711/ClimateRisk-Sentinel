@@ -1,7 +1,21 @@
 import L from "leaflet";
 import { useEffect, useMemo, useState } from "react";
-import { CircleMarker, GeoJSON as GeoJsonLayer, MapContainer, TileLayer, useMap } from "react-leaflet";
+import {
+  CircleMarker,
+  GeoJSON as GeoJsonLayer,
+  MapContainer,
+  Rectangle,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
+import type { AnalysisRunResponse, AOIMetadata, DatasetSearchResponse } from "../../lib/api";
 import type { GeoJsonPolygon } from "../../types/domain";
+import { MapAnalysisContextPanel } from "./MapAnalysisContextPanel";
+import {
+  aoiMetadataToBounds,
+  contextGuideLinesGeoJson,
+  stacItemBboxToBounds,
+} from "./mapOverlayHelpers";
 import { DrawPolygonToolbar } from "./DrawPolygonToolbar";
 
 type BasemapId = "neutral" | "street";
@@ -20,14 +34,21 @@ function FitAoi({ geojson }: { geojson: GeoJsonPolygon | null }) {
 type LayerState = {
   aoi: boolean;
   centroid: boolean;
+  footprintBbox: boolean;
+  heatTint: boolean;
+  contextGuides: boolean;
+  stacFootprint: boolean;
 };
 
 type Props = {
   aoiGeometry: GeoJsonPolygon | null;
   centroid: { lon: number; lat: number } | null;
+  metadata: AOIMetadata | null;
+  analysisResult: AnalysisRunResponse | null;
+  stacPreview: DatasetSearchResponse | null;
+  aoiValidated: boolean;
   analysisActive: boolean;
   analysisLoading: boolean;
-  /** When false, drawing still works; server-backed actions are disabled in the workflow panel. */
   apiOnline?: boolean;
   onDrawPolygon: (g: GeoJsonPolygon) => void;
   onClearDraw: () => void;
@@ -53,6 +74,10 @@ const BASEMAPS: Record<
 export function AnalysisMapPanel({
   aoiGeometry,
   centroid,
+  metadata,
+  analysisResult,
+  stacPreview,
+  aoiValidated,
   analysisActive,
   analysisLoading,
   apiOnline = true,
@@ -60,7 +85,43 @@ export function AnalysisMapPanel({
   onClearDraw,
 }: Props) {
   const [basemap, setBasemap] = useState<BasemapId>("neutral");
-  const [layers, setLayers] = useState<LayerState>({ aoi: true, centroid: true });
+  const [layers, setLayers] = useState<LayerState>({
+    aoi: true,
+    centroid: true,
+    footprintBbox: true,
+    heatTint: false,
+    contextGuides: true,
+    stacFootprint: false,
+  });
+
+  const ndviMean = useMemo(() => {
+    const row = analysisResult?.indicators?.find((i) => i.key === "ndvi_mean");
+    return typeof row?.value === "number" ? row.value : null;
+  }, [analysisResult]);
+
+  const heatStyle = useMemo(() => {
+    const base = { color: "#10b981", weight: 5, opacity: 0.22, fillColor: "#34d399", fillOpacity: 0.1 };
+    if (ndviMean == null || Number.isNaN(ndviMean)) return base;
+    const t = Math.max(0, Math.min(1, (ndviMean + 1) / 2));
+    return {
+      color: "#34d399",
+      weight: 4 + t * 4,
+      opacity: 0.15 + t * 0.2,
+      fillColor: "#10b981",
+      fillOpacity: 0.06 + t * 0.14,
+    };
+  }, [ndviMean]);
+
+  const stacBounds = useMemo(() => {
+    const first = stacPreview?.items?.[0];
+    if (!first || typeof first !== "object") return null;
+    return stacItemBboxToBounds(first as Record<string, unknown>);
+  }, [stacPreview]);
+
+  const guideGeoJson = useMemo(() => {
+    if (!metadata?.bbox || !centroid) return null;
+    return contextGuideLinesGeoJson(metadata.bbox, centroid);
+  }, [metadata, centroid]);
 
   const aoiStyle = useMemo(() => {
     if (!layers.aoi) return { opacity: 0, fillOpacity: 0, weight: 0, color: "#000", fillColor: "#000" };
@@ -89,8 +150,7 @@ export function AnalysisMapPanel({
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Map</p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-50">AOI & context</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-400">
-            Footprint and validation geometry. Indices are summarized numerically — this view stays honest about what is
-            drawn on the map (outline + centroid), not pseudo satellite overlays.
+            Footprint, footprint bbox, and optional scene/STAC overlays — raster KPIs remain server-computed.
           </p>
           {!apiOnline ? (
             <p className="mt-3 max-w-xl text-xs leading-relaxed text-amber-200/85">
@@ -112,7 +172,7 @@ export function AnalysisMapPanel({
       </div>
 
       <div className="relative px-5 pb-5 pt-4">
-        <div className="relative overflow-hidden rounded-xl ring-1 ring-slate-800/90">
+        <div className="relative overflow-hidden rounded-xl ring-1 ring-slate-800/90 transition-opacity duration-300">
           <MapContainer
             center={[20, 0]}
             zoom={2}
@@ -122,10 +182,52 @@ export function AnalysisMapPanel({
           >
             <TileLayer attribution={b.attribution} url={b.url} />
             <FitAoi geojson={aoiGeometry} />
+            {metadata?.bbox && layers.footprintBbox ? (
+              <Rectangle
+                bounds={aoiMetadataToBounds(metadata.bbox)}
+                pathOptions={{
+                  color: "#64748b",
+                  weight: 1,
+                  opacity: 0.9,
+                  fillOpacity: 0,
+                  dashArray: "6 10",
+                }}
+              />
+            ) : null}
+            {layers.stacFootprint && stacBounds ? (
+              <Rectangle
+                bounds={stacBounds}
+                pathOptions={{
+                  color: "#22d3ee",
+                  weight: 1,
+                  opacity: 0.55,
+                  fillColor: "#22d3ee",
+                  fillOpacity: 0.05,
+                  dashArray: "3 5",
+                }}
+              />
+            ) : null}
+            {layers.heatTint && aoiGeometry ? (
+              <GeoJsonLayer
+                data={aoiGeometry as unknown as GeoJSON.GeoJsonObject}
+                style={heatStyle}
+              />
+            ) : null}
             {aoiGeometry ? (
               <GeoJsonLayer
                 data={aoiGeometry as unknown as GeoJSON.GeoJsonObject}
                 style={aoiStyle}
+              />
+            ) : null}
+            {layers.contextGuides && guideGeoJson ? (
+              <GeoJsonLayer
+                data={guideGeoJson as unknown as GeoJSON.GeoJsonObject}
+                style={{
+                  color: "#475569",
+                  weight: 1,
+                  opacity: 0.7,
+                  dashArray: "4 6",
+                }}
               />
             ) : null}
             {centroid && layers.centroid ? (
@@ -143,70 +245,132 @@ export function AnalysisMapPanel({
             <DrawPolygonToolbar onPolygonCreated={onDrawPolygon} onLayersCleared={onClearDraw} />
           </MapContainer>
 
-          {/* Controls above map tiles */}
           <div className="pointer-events-none absolute inset-0 z-[500] flex flex-col justify-between p-3">
-            <div className="pointer-events-auto flex max-w-[min(100%,20rem)] flex-col gap-2 rounded-xl border border-slate-800/90 bg-slate-950/85 p-3 text-xs shadow-lg backdrop-blur-md">
-              <p className="font-medium uppercase tracking-wide text-slate-500">Layers</p>
-              <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
-                <span>AOI polygon</span>
-                <input
-                  type="checkbox"
-                  checked={layers.aoi}
-                  onChange={(e) => setLayers((s) => ({ ...s, aoi: e.target.checked }))}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40"
-                />
-              </label>
-              <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
-                <span>Validated centroid</span>
-                <input
-                  type="checkbox"
-                  checked={layers.centroid}
-                  disabled={!centroid}
-                  onChange={(e) => setLayers((s) => ({ ...s, centroid: e.target.checked }))}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
-                />
-              </label>
-              {!centroid ? (
-                <p className="text-[11px] leading-snug text-slate-500">Centroid appears after validation.</p>
-              ) : null}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="pointer-events-auto flex max-w-[min(100%,20rem)] flex-col gap-2 rounded-xl border border-slate-800/90 bg-slate-950/85 p-3 text-xs shadow-lg backdrop-blur-md transition-colors duration-200">
+                <p className="font-medium uppercase tracking-wide text-slate-500">Layers</p>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
+                  <span>AOI polygon</span>
+                  <input
+                    type="checkbox"
+                    checked={layers.aoi}
+                    onChange={(e) => setLayers((s) => ({ ...s, aoi: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40"
+                  />
+                </label>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
+                  <span>Footprint bbox</span>
+                  <input
+                    type="checkbox"
+                    checked={layers.footprintBbox}
+                    disabled={!metadata?.bbox}
+                    onChange={(e) => setLayers((s) => ({ ...s, footprintBbox: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
+                  />
+                </label>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
+                  <span>Index halo (NDVI proxy)</span>
+                  <input
+                    type="checkbox"
+                    checked={layers.heatTint}
+                    disabled={!aoiGeometry}
+                    onChange={(e) => setLayers((s) => ({ ...s, heatTint: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
+                  />
+                </label>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
+                  <span>Context guides</span>
+                  <input
+                    type="checkbox"
+                    checked={layers.contextGuides}
+                    disabled={!metadata?.bbox || !centroid}
+                    onChange={(e) => setLayers((s) => ({ ...s, contextGuides: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
+                  />
+                </label>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
+                  <span>STAC scene bbox</span>
+                  <input
+                    type="checkbox"
+                    checked={layers.stacFootprint}
+                    disabled={!stacBounds}
+                    onChange={(e) => setLayers((s) => ({ ...s, stacFootprint: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
+                  />
+                </label>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-slate-300">
+                  <span>Validated centroid</span>
+                  <input
+                    type="checkbox"
+                    checked={layers.centroid}
+                    disabled={!centroid}
+                    onChange={(e) => setLayers((s) => ({ ...s, centroid: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-brand-500/40 disabled:opacity-40"
+                  />
+                </label>
+                {!metadata?.bbox ? (
+                  <p className="text-[11px] leading-snug text-slate-500">BBox overlays require validated AOI metadata.</p>
+                ) : null}
+              </div>
+
+              <MapAnalysisContextPanel
+                analysisResult={analysisResult}
+                stacPreview={stacPreview}
+                analysisLoading={analysisLoading}
+                aoiValidated={aoiValidated}
+                hasAoi={aoiGeometry !== null}
+              />
             </div>
 
-            <div className="pointer-events-auto ml-auto mt-auto max-w-[min(100%,17rem)] rounded-xl border border-slate-800/90 bg-slate-950/85 p-3 text-[11px] leading-relaxed text-slate-400 shadow-lg backdrop-blur-md">
+            <div className="pointer-events-auto ml-auto mt-auto max-w-[min(100%,17rem)] rounded-xl border border-slate-800/90 bg-slate-950/85 p-3 text-[11px] leading-relaxed text-slate-400 shadow-lg backdrop-blur-md transition-colors duration-200">
               <p className="font-semibold uppercase tracking-wide text-slate-500">Legend</p>
               <ul className="mt-2 space-y-2">
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm border-2 border-emerald-400 bg-emerald-400/15" />
-                  <span>AOI after analysis run</span>
+                  <span>AOI after analysis</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm border-2 border-cyan-400 bg-cyan-400/10" />
-                  <span>AOI draft / no analysis yet</span>
+                  <span>AOI draft</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 h-3 w-8 shrink-0 border border-dashed border-slate-500" />
+                  <span>Footprint bbox</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 h-3 w-8 shrink-0 border border-dashed border-cyan-600/60" />
+                  <span>STAC item bbox (first hit)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-cyan-300 ring-2 ring-cyan-500/40" />
-                  <span>Centroid (validated geometry)</span>
+                  <span>Centroid</span>
                 </li>
               </ul>
             </div>
           </div>
 
           {analysisLoading ? (
-            <div className="pointer-events-none absolute inset-0 z-[600] flex flex-col items-center justify-center gap-3 bg-slate-950/65 backdrop-blur-[2px]">
+            <div className="pointer-events-none absolute inset-0 z-[600] flex flex-col items-center justify-center gap-4 bg-slate-950/40 backdrop-blur-[1px] transition-opacity duration-300">
+              <div className="flex w-full max-w-xs flex-col gap-2 px-6">
+                <div className="h-2.5 w-full rounded bg-slate-700/90 animate-pulse" />
+                <div className="h-2.5 w-4/5 rounded bg-slate-700/70 animate-pulse" />
+                <div className="h-2.5 w-3/5 rounded bg-slate-700/60 animate-pulse" />
+              </div>
               <div
-                className="h-9 w-9 animate-spin rounded-full border-2 border-slate-600 border-t-brand-500"
+                className="h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-brand-500"
                 aria-hidden
               />
-              <p className="text-sm font-medium text-slate-200">Running analysis…</p>
-              <p className="max-w-xs px-6 text-center text-xs text-slate-400">
-                Fetching open data and computing AOI statistics — usually under a minute for small areas.
+              <p className="text-xs font-medium text-slate-300">Running analysis…</p>
+              <p className="max-w-xs px-6 text-center text-[11px] text-slate-500">
+                Map stays usable — pipeline runs server-side.
               </p>
             </div>
           ) : null}
         </div>
 
         <p className="mt-4 text-xs leading-relaxed text-slate-500">
-          Draw tools: top-right on the map. Raster indicators (NDVI / NDWI / NDBI) are computed for the AOI server-side;
-          the map shows geographic context only.
+          Draw tools: top-right on the map. Toggle overlays to relate footprint, catalog bbox, and NDVI-weighted halo to
+          tabular results.
         </p>
       </div>
     </section>

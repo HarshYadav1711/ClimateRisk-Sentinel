@@ -29,7 +29,7 @@ def list_signed_items_for_temporal_analysis(
     search = catalog.search(
         collections=[settings.default_stac_collection],
         bbox=list(bbox),
-        datetime=settings.stac_datetime_preset,
+        datetime=settings.stac_datetime_range,
         query={"eo:cloud_cover": {"lt": settings.stac_cloud_cover_lt}},
         sortby=[{"field": "datetime", "direction": "desc"}],
         limit=settings.stac_max_items,

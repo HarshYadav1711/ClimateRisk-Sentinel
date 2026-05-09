@@ -34,7 +34,7 @@ def search_sentinel_items_for_polygon(
         "catalog": settings.stac_catalog_url,
         "collection": settings.default_stac_collection,
         "bbox": bbox_r,
-        "datetime": settings.stac_datetime_preset,
+        "datetime": settings.stac_datetime_range,
         "limit": settings.stac_max_items,
         "cloud_lt": settings.stac_cloud_cover_lt,
     }
@@ -51,7 +51,7 @@ def search_sentinel_items_for_polygon(
     search = catalog.search(
         collections=[settings.default_stac_collection],
         bbox=list(bbox),
-        datetime=settings.stac_datetime_preset,
+        datetime=settings.stac_datetime_range,
         query={"eo:cloud_cover": {"lt": settings.stac_cloud_cover_lt}},
         sortby=[{"field": "datetime", "direction": "desc"}],
         limit=settings.stac_max_items,
@@ -76,7 +76,7 @@ def search_sentinel_items_for_polygon(
         "catalog_url": settings.stac_catalog_url,
         "collection": settings.default_stac_collection,
         "bbox": {"min_lon": bbox_r[0], "min_lat": bbox_r[1], "max_lon": bbox_r[2], "max_lat": bbox_r[3]},
-        "datetime_range": settings.stac_datetime_preset,
+        "datetime_range": settings.stac_datetime_range,
         "items": items,
         "cache": "miss",
     }

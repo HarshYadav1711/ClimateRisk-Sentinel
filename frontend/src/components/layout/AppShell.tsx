@@ -61,6 +61,10 @@ export function AppShell() {
           <AnalysisMapPanel
             aoiGeometry={w.aoiGeometry}
             centroid={w.centroid}
+            metadata={w.metadata}
+            analysisResult={w.analysisResult}
+            stacPreview={w.stacPreview}
+            aoiValidated={w.validatedGeometry !== null}
             analysisActive={w.analysisResult !== null}
             analysisLoading={w.analysisLoading}
             apiOnline={w.apiOnline}

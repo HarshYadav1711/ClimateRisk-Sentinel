@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -20,10 +23,11 @@ from app.services.geometry import (
 )
 
 router = APIRouter()
+_log = logging.getLogger(__name__)
 
 
 @router.post("/run", response_model=AnalysisRunResponse)
-def execute_analysis(body: AnalysisRunRequest, request: Request) -> AnalysisRunResponse:
+async def execute_analysis(body: AnalysisRunRequest, request: Request) -> AnalysisRunResponse:
     settings = get_settings()
 
     if body.aoi_id is not None:
@@ -46,7 +50,15 @@ def execute_analysis(body: AnalysisRunRequest, request: Request) -> AnalysisRunR
         except GeometryValidationError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    report = run_aoi_analysis(poly)
+    timeout = settings.analysis_request_timeout_seconds
+    try:
+        if timeout and timeout > 0:
+            report = await asyncio.wait_for(asyncio.to_thread(run_aoi_analysis, poly), timeout=timeout)
+        else:
+            report = await asyncio.to_thread(run_aoi_analysis, poly)
+    except asyncio.TimeoutError:
+        _log.warning("analysis run timed out after %.1fs", timeout)
+        raise HTTPException(status_code=504, detail="Analysis timed out.") from None
 
     indicators = [IndicatorDTO(**row) for row in build_indicator_rows(report)]
     infra = report.infrastructure
