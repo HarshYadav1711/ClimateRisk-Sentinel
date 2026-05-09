@@ -1,110 +1,158 @@
 # ClimateRisk Sentinel
 
-**Climate-risk and infrastructure intelligence** from a single **area of interest (AOI)**: validate geometry, discover **Sentinel-2** scenes, compute **open-data** surface and proximity proxies, and return an **explainable heuristic** screening index — not a calibrated damage or financial loss model.
-
-This repository is a small **monorepo** designed to be **reviewer-friendly**: thin HTTP routes, services for geospatial and STAC logic, a straight-line React UI, and tests on the analysis math.
+**Open-data geospatial intelligence for a single footprint.** ClimateRisk Sentinel validates an area of interest (AOI), queries public catalogs, computes surface indices and infrastructure proxies from **Sentinel-2** and **OpenStreetMap**, and returns **explainable outputs**—including a **documented heuristic screening index (0–100)** that is **not** a predictive damage model or loss estimator.
 
 ---
 
-## What it does
+## At a glance
 
-1. **Accepts a WGS84 polygon** (pasted coordinates or map draw) and **normalizes/validates** it server-side (Shapely).
-2. **Optionally stores** the AOI in **PostGIS** if the database is up.
-3. **Queries the Microsoft Planetary Computer** public **STAC** API for `sentinel-2-l2a` items with **fixed, reproducible** search parameters and short-lived in-process caching.
-4. **Runs a deterministic analysis pipeline** (when the AOI is within a configurable area cap): mean **NDVI / NDWI / NDBI**-style indices from COGs, **OpenStreetMap**-based road length and nearest waterway, **ΔNDVI** when two distinct acquisitions are available, and a **documented weighted heuristic score (0–100)** with narrative and caveats.
-5. Serves a **React + Leaflet** UI: map + workflow + indicator dashboard + JSON/text export.
-
----
-
-## Why it exists
-
-Many teams need a **credible first pass** on “what does open data say about this footprint?” before investing in proprietary models. ClimateRisk Sentinel is intentionally **modest**: it **does not** claim prediction of insured loss, structural failure, or event timing. It **does** surface **reproducible, cited indicators** and **explicit limitations** so technical reviewers can trust the chain of reasoning in minutes.
-
----
-
-## How it works (architecture)
-
-| Layer | Role |
+| | |
 | --- | --- |
-| `frontend/` | React, Leaflet, Tailwind. Calls `/api/...` (Vite dev server proxies to the backend). |
-| `backend/app/api/routes` | FastAPI handlers — validation, persistence, STAC search, analysis run. |
-| `backend/app/schemas` | Pydantic request/response models. |
-| `backend/app/services` | Geometry, STAC + cache, and `services/analysis/*` (raster readout, OSM, risk heuristic, pipeline). |
-| `backend/app/db` | SQLAlchemy + GeoAlchemy2 models for optional AOI storage. |
+| **What it does** | Turns a WGS84 polygon into normalized geometry metadata, STAC-backed scene discovery, raster statistics (e.g. NDVI / NDWI / NDBI-style means), OSM-derived infrastructure metrics, optional ΔNDVI across two acquisitions, and a weighted **screening** score with narratives and caveats. |
+| **Why it exists** | Teams need a **fast, reproducible first read** on “what does open data say here?” before investing in proprietary models or field work. The stack favors **traceability** and **honest limits** over headline scores. |
+| **Who it’s for** | Engineers and analysts reviewing climate-adjacent exposure; **technical due diligence** and demos; anyone who values **cited indicators** and explicit uncertainty over black-box “risk numbers.” |
+
+---
+
+## Architecture (overview)
+
+| Area | Stack & responsibility |
+| --- | --- |
+| **Frontend** | **React**, **Vite**, **TypeScript**, **Tailwind**. **Leaflet** + **react-leaflet** + **leaflet-draw** for AOI sketching and map context; dashboard and export UI call the API via the Vite dev proxy. |
+| **Backend** | **FastAPI** + **Pydantic** — thin HTTP layer, OpenAPI at `/docs`. **SQLAlchemy** + **GeoAlchemy2** + **Psycopg** for optional AOI persistence when PostGIS is available. |
+| **Spatial analysis** | **Shapely** / **GeoPandas** for geometry; **Rasterio** + **Xarray** + **NumPy** for Cloud-Optimized GeoTIFF readouts inside the AOI; **PyProj** for equal-area metrics. Pipeline code lives under `backend/app/services/analysis/`. |
+| **Public data pipeline** | **pystac-client** against **Microsoft Planetary Computer** STAC (`sentinel-2-l2a`), signed reads via **planetary-computer**; **Overpass** for OSM ways in/near the AOI. Short-lived **in-process caches** for STAC metadata and analysis (see `backend/app/config.py`). |
 
 High-level flow:
 
 ```mermaid
 flowchart LR
-  UI[Web UI] -->|GeoJSON polygon| API[FastAPI]
-  API -->|validate| G[Shapely geometry]
+  UI[React + Leaflet] -->|GeoJSON AOI| API[FastAPI]
+  API -->|validate / metrics| G[Shapely + projections]
   G -->|optional| DB[(PostGIS)]
   G --> STAC[Planetary Computer STAC]
-  G --> A[Analysis pipeline]
-  A -->|COGs| S2[Sentinel-2 L2A]
-  A -->|Overpass| OSM[OpenStreetMap]
-  A --> R[Heuristic score + JSON]
-  R --> UI
+  G --> P[Analysis pipeline]
+  P -->|COGs| S2[Sentinel-2 L2A]
+  P -->|Overpass| OSM[OpenStreetMap]
+  P --> Out[Indicators + heuristic + caveats]
+  Out --> UI
 ```
 
 ---
 
-## Datasets and libraries
+## Core capabilities
 
-**Data (all public; no commercial map or geocoding APIs in the default path)**
-
-| Source | Use |
+| Capability | Notes |
 | --- | --- |
-| [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) | STAC catalog and signed **Sentinel-2 L2A** COG assets for index statistics. |
-| [OpenStreetMap](https://www.openstreetmap.org/) (via Overpass) | Road network length in AOI context, nearest mapped linear waterways. |
-| [OpenStreetMap](https://www.openstreetmap.org/copyright) tiles | Basemap in the UI. |
-
-**Backend (see `backend/pyproject.toml`)**
-
-- **API & runtime:** FastAPI, Uvicorn, Pydantic, SQLAlchemy, Psycopg, GeoAlchemy2  
-- **Geospatial stack:** Shapely, PyProj, GeoPandas, Rasterio, Xarray, NumPy  
-- **STAC & PC:** pystac-client, planetary-computer, httpx  
-
-**Frontend (see `frontend/package.json`)**
-
-- React, Vite, TypeScript, Tailwind CSS, Leaflet, react-leaflet, leaflet-draw  
+| **AOI workflows** | Paste coordinates or draw a polygon; server-side normalization, ring closure, validity checks, and **area caps** with clear errors. Optional save to PostGIS when the DB is up. |
+| **STAC search** | Fixed, reproducible search parameters against Planetary Computer (`sentinel-2-l2a`), rolling datetime window or optional preset, cloud-cover filter — surfaced with caching behavior documented in config. |
+| **Raster analytics** | Mean **NDVI / NDWI / NDBI**-style indices over masked pixels for selected scenes; **partial analysis** when AOI or runtime limits apply — always reflected in **`caveats`**. |
+| **Infrastructure metrics** | OSM-based **road length** context and **nearest mapped waterway** distance — interpreted as **proxies**, not ground-truth hydrology. |
+| **Heuristic screening** | Weighted **0–100 index** from documented inputs (e.g. vegetation change signal, water proximity, infrastructure context). **Explainable and bounded** — **not** a calibrated hazard or catastrophe model. |
 
 ---
 
-## Current limitations (read before production use)
+## Screenshots & visuals
 
-- **Heuristic index only** — The 0–100 score is a **transparent blend of proxies**, not a calibrated probability of flood, fire, or loss.
-- **AOI size caps** — Very large areas skip raster downloads; the API **partial analysis** path and `caveats` explain what was skipped (`max_aoi_area_km2`, `analysis_max_aoi_area_km2` in `backend/app/config.py`).
-- **Data completeness** — OSM varies by region; “no waterway” may mean **no data**, not absence of water. The API carries **caveats** per run.
-- **Two-scene comparison** — ΔNDVI needs **two usable** distinct acquisitions; cloud cover and processing failures can leave a single scene or no scenes.
-- **No auth by default** — The stack is for **local / controlled** review and demos. Add auth, rate limits, and hardening before internet exposure.
-- **In-process cache** — STAC metadata cache is per process and **not** shared across workers.
+Use these for decks, README polish, and onboarding—replace placeholders as you capture real UI.
+
+| Asset | Use |
+| --- | --- |
+| [`docs/screenshots/ui-overview.svg`](docs/screenshots/ui-overview.svg) | **Diagrammatic** map + dashboard + workflow layout (non-photographic). |
+| *Optional PNGs* | Add under `docs/screenshots/` (e.g. `map-aoi-2026-05.png`, `dashboard-indicators.png`) — map with validated AOI, indicator dashboard with caveats visible, export panel. See [`docs/screenshots/README.md`](docs/screenshots/README.md). |
+
+**Suggested capture checklist**
+
+1. **Map** — AOI drawn or pasted, footprint bbox / optional NDVI visual context layer.  
+2. **Dashboard** — indicators table + temporal block when two scenes exist.  
+3. **Workflow** — validate → analyze path with honest copy visible.  
 
 ---
 
-## Run locally
+## Technical decisions
+
+| Choice | Rationale |
+| --- | --- |
+| **Microsoft Planetary Computer** | Public **STAC** API, **signed** access to **Sentinel-2 L2A** COGs—no proprietary imagery hosting; reproducible catalog semantics for reviewers. |
+| **Heuristic scoring** | A **transparent blend** of proxies with component notes beats an opaque “score.” Not presented as ML inference or return-period hazard—**screening and triage** only. |
+| **Open-source stack** | **FastAPI**, **React**, **Leaflet**, **PostGIS** — deployable without a paid maps platform; code and dependencies are **auditable** for technical stakeholders. |
+| **Leaflet** | Lightweight 2D maps, OSM-friendly, **no Mapbox-style** lock-in for the default path. |
+| **PostGIS** | Optional **AOI persistence** and spatial types when you want multi-session workflows; core APIs still run without DB. |
+| **FastAPI** | Native OpenAPI, Pydantic validation, straightforward sync/async routes for I/O-heavy analysis. |
+
+---
+
+## Limitations (read before relying on outputs)
+
+- **Not a catastrophe or hazard model** — Outputs are **proxies** from open data, not engineering-grade flood, fire, or wind fields.  
+- **Not insured loss or financial prediction** — The heuristic index is **not** a pricing, underwriting, or loss-cost estimate.  
+- **Open-data caveats** — OSM completeness varies by region; “no waterway” may mean **no mapped feature**, not absence of risk. Planetary Computer and scene availability depend on **cloud cover**, processing, and **AOI size** limits.  
+- **Raster limits** — Large AOIs may skip or shrink raster work; **`partial_analysis`** and **`caveats`** describe what ran. ΔNDVI needs **two distinct** usable acquisitions.  
+- **Operations** — No auth by default; STAC/analysis caches are **in-process**. Harden for production (auth, rate limits, shared cache or workers as needed).
+
+---
+
+## Local setup
 
 **Prerequisites:** Python **3.11+** ([uv](https://docs.astral.sh/uv/) recommended), Node **20+**, **Docker** optional (PostGIS).
 
-### 1. Optional: database
+### Optional: database (PostGIS)
 
 ```bash
 docker compose up -d
 ```
 
-Copy `.env.example` to `backend/.env` and adjust if needed. Without Postgres, **validation, STAC search, and analysis still work**; **saving** an AOI returns 503.
+Then ensure `database_url` in `backend/.env` matches the compose service (see `.env.example`).
 
-### 2. Backend
+### Environment
+
+Copy the example env and tune for your machine:
+
+```bash
+cp .env.example backend/.env
+```
+
+Key variables (see `backend/app/config.py` for full list): `DATABASE_URL` / `database_url`, STAC catalog URL, datetime preset vs rolling lookback, AOI and analysis area caps, Overpass endpoint, CORS (`cors_origins` for non-local frontends).
+
+Without Postgres, **validate**, **STAC search**, and **analysis** still work; **persist AOI** (`POST /api/v1/aoi/`) returns **503** if the DB is unavailable.
+
+### Backend
 
 ```bash
 cd backend
-cp ../.env.example .env   # or: copy ..\.env.example .env  (Windows)
 uv sync
+# Optional: tests & lint
+uv sync --extra dev
+
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 - OpenAPI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)  
-- Health: `GET /api/v1/health`  
+- Health: `GET /api/v1/health`
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite **proxies `/api`** to `http://127.0.0.1:8000`.
+
+**Production:** `npm run build` → serve `frontend/dist` behind a reverse proxy; route **`/api`** to the same FastAPI host.
+
+### Tests (backend)
+
+```bash
+cd backend
+uv sync --extra dev
+uv run python -m pytest
+```
+
+---
+
+## API surface (quick reference)
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -116,50 +164,25 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | POST | `/api/v1/datasets/search` | STAC search (`geometry` **xor** `aoi_id`) |
 | POST | `/api/v1/analysis/run` | Indicators + heuristic (`geometry` **xor** `aoi_id`) |
 
-### 3. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The Vite config **proxies `/api`** to `http://127.0.0.1:8000`.
-
-**Production build:** `npm run build` then serve `frontend/dist` behind your reverse proxy, with `/api` routed to the same FastAPI host.
-
-### 4. Tests (backend)
-
-```bash
-cd backend
-uv run pytest
-```
-
 ---
 
-## UI overview (demo asset)
-
-A **non-photographic** layout diagram is in [`docs/screenshots/ui-overview.svg`](docs/screenshots/ui-overview.svg) for slides and reviews. Replace or supplement with real PNG captures if you need marketing screenshots; see `docs/screenshots/README.md`.
-
----
-
-## Repository layout (reviewer map)
+## Repository layout
 
 ```text
 backend/app           FastAPI app, config, services, db
-backend/tests         Unit tests for analysis helpers
+backend/tests         Focused tests (geometry, heuristics, API smoke)
 frontend/src          React UI, hooks, API client, map
-docs/screenshots      Optional UI captures and the overview SVG
+docs/screenshots      UI overview SVG; optional PNG captures
 .env.example          Copy to backend/.env
 docker-compose.yml    Optional PostGIS
 ```
 
-For contribution and code quality expectations, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## License and attribution
 
-- Basemap and OSM-derived data: **OpenStreetMap contributors** ([ODbL](https://www.openstreetmap.org/copyright)).  
-- Satellite metadata and assets: **Microsoft Planetary Computer** / **Sentinel-2** usage subject to their terms.  
-- Add your preferred **project license** when you open-source publicly.
+- **OpenStreetMap** contributors ([ODbL](https://www.openstreetmap.org/copyright)) — tiles and derived OSM queries.  
+- **Microsoft Planetary Computer** / **Sentinel-2** — use subject to their terms.  
+- Add your **project license** when publishing publicly.
