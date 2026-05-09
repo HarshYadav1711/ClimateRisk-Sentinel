@@ -7,15 +7,20 @@ type Props = {
     datetime_range: string;
   } | null;
   loading: boolean;
+  apiOnline: boolean;
 };
 
-export function StacPreviewSection({ datasetPreview, loading }: Props) {
+export function StacPreviewSection({ datasetPreview, loading, apiOnline }: Props) {
   return (
     <SectionCard
       title="Planetary Computer (STAC)"
-      subtitle="Sentinel-2 L2A scene metadata for your AOI — deterministic query, cached briefly server-side."
+      subtitle="Sentinel-2 L2A scene metadata — deterministic query parameters on the server."
     >
-      {loading ? (
+      {!apiOnline ? (
+        <p className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-400">
+          Connect the API to search the catalog.
+        </p>
+      ) : loading ? (
         <p className="animate-pulse text-sm text-slate-500">Searching catalog…</p>
       ) : datasetPreview ? (
         <>

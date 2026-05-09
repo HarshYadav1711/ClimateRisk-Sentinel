@@ -27,6 +27,8 @@ type Props = {
   centroid: { lon: number; lat: number } | null;
   analysisActive: boolean;
   analysisLoading: boolean;
+  /** When false, drawing still works; server-backed actions are disabled in the workflow panel. */
+  apiOnline?: boolean;
   onDrawPolygon: (g: GeoJsonPolygon) => void;
   onClearDraw: () => void;
 };
@@ -53,6 +55,7 @@ export function AnalysisMapPanel({
   centroid,
   analysisActive,
   analysisLoading,
+  apiOnline = true,
   onDrawPolygon,
   onClearDraw,
 }: Props) {
@@ -89,6 +92,11 @@ export function AnalysisMapPanel({
             Footprint and validation geometry. Indices are summarized numerically — this view stays honest about what is
             drawn on the map (outline + centroid), not pseudo satellite overlays.
           </p>
+          {!apiOnline ? (
+            <p className="mt-3 max-w-xl text-xs leading-relaxed text-amber-200/85">
+              API offline — you can still sketch an AOI locally; connect the backend to validate and analyze.
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <select

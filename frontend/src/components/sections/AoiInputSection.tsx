@@ -12,6 +12,7 @@ type Props = {
   error: string | null;
   dbAvailable: boolean | null;
   savedAoiId: string | null;
+  apiOnline: boolean;
 };
 
 export function AoiInputSection({
@@ -26,6 +27,7 @@ export function AoiInputSection({
   error,
   dbAvailable,
   savedAoiId,
+  apiOnline,
 }: Props) {
   return (
     <SectionCard
@@ -51,7 +53,8 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !apiOnline}
+          title={!apiOnline ? "Start the API to validate" : undefined}
           onClick={onValidate}
           className="rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 hover:border-brand-500 disabled:opacity-40"
         >
@@ -59,8 +62,10 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy || dbAvailable === false}
-          title={dbAvailable === false ? "Start Postgres (docker compose) to persist AOIs" : undefined}
+          disabled={busy || !apiOnline || dbAvailable === false}
+          title={
+            !apiOnline ? "Start the API to save" : dbAvailable === false ? "Start Postgres (docker compose) to persist AOIs" : undefined
+          }
           onClick={onSave}
           className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-brand-500 disabled:opacity-40"
         >
@@ -68,7 +73,8 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !apiOnline}
+          title={!apiOnline ? "Start the API to search STAC" : undefined}
           onClick={onSearchStac}
           className="rounded-lg border border-brand-700/50 px-3 py-2 text-sm font-medium text-brand-200 hover:bg-brand-950/40 disabled:opacity-40"
         >
@@ -76,7 +82,8 @@ export function AoiInputSection({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !apiOnline}
+          title={!apiOnline ? "Start the API to run analysis" : undefined}
           onClick={onRunAnalysis}
           className="rounded-lg border border-emerald-800/80 bg-emerald-950/40 px-3 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-950/70 disabled:opacity-40"
         >

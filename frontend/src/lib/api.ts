@@ -1,20 +1,6 @@
-const API_BASE = "";
+import { fetchJson } from "./http";
 
-function parseFastApiDetail(payload: unknown): string {
-  if (!payload || typeof payload !== "object") return "Request failed";
-  const detail = (payload as { detail?: unknown }).detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail
-      .map((item) =>
-        typeof item === "object" && item && "msg" in item
-          ? String((item as { msg?: unknown }).msg)
-          : JSON.stringify(item),
-      )
-      .join("; ");
-  }
-  return "Request failed";
-}
+const API_BASE = "";
 
 export type HealthPayload = {
   status: string;
@@ -58,41 +44,27 @@ export type DatasetSearchResponse = {
 };
 
 export async function fetchHealth(): Promise<HealthPayload> {
-  const res = await fetch(`${API_BASE}/api/v1/health`);
-  if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
-  return res.json() as Promise<HealthPayload>;
+  return fetchJson<HealthPayload>(`${API_BASE}/api/v1/health`);
 }
 
 export async function fetchVersion(): Promise<VersionPayload> {
-  const res = await fetch(`${API_BASE}/api/v1/version`);
-  if (!res.ok) throw new Error(`Version check failed: ${res.status}`);
-  return res.json() as Promise<VersionPayload>;
+  return fetchJson<VersionPayload>(`${API_BASE}/api/v1/version`);
 }
 
 export async function validateAoiGeometry(geometry: GeoJSON.Polygon): Promise<ValidateAOIResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/aoi/validate`, {
+  return fetchJson<ValidateAOIResponse>(`${API_BASE}/api/v1/aoi/validate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ geometry }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(parseFastApiDetail(err) || res.statusText);
-  }
-  return res.json() as Promise<ValidateAOIResponse>;
 }
 
 export async function saveAoi(geometry: GeoJSON.Polygon, label?: string): Promise<AOICreatedResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/aoi/`, {
+  return fetchJson<AOICreatedResponse>(`${API_BASE}/api/v1/aoi/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ geometry, label }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(parseFastApiDetail(err) || res.statusText);
-  }
-  return res.json() as Promise<AOICreatedResponse>;
 }
 
 export async function searchDatasets(params: {
@@ -103,16 +75,11 @@ export async function searchDatasets(params: {
     params.aoiId != null
       ? { aoi_id: params.aoiId }
       : { geometry: params.geometry };
-  const res = await fetch(`${API_BASE}/api/v1/datasets/search`, {
+  return fetchJson<DatasetSearchResponse>(`${API_BASE}/api/v1/datasets/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(parseFastApiDetail(err) || res.statusText);
-  }
-  return res.json() as Promise<DatasetSearchResponse>;
 }
 
 export type AnalysisIndicator = {
@@ -144,19 +111,18 @@ export type AnalysisRunResponse = {
   machine_summary: Record<string, unknown>;
 };
 
+/** Raster + network work — avoid hanging forever on slow responses. */
+const ANALYSIS_TIMEOUT_MS = 120_000;
+
 export async function runAnalysis(params: {
   geometry?: GeoJSON.Polygon;
   aoiId?: string;
 }): Promise<AnalysisRunResponse> {
   const body = params.aoiId != null ? { aoi_id: params.aoiId } : { geometry: params.geometry };
-  const res = await fetch(`${API_BASE}/api/v1/analysis/run`, {
+  return fetchJson<AnalysisRunResponse>(`${API_BASE}/api/v1/analysis/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    timeoutMs: ANALYSIS_TIMEOUT_MS,
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(parseFastApiDetail(err) || res.statusText);
-  }
-  return res.json() as Promise<AnalysisRunResponse>;
 }

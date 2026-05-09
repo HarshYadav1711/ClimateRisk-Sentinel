@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import planetary_computer
 from pystac import Item
 from pystac_client import Client

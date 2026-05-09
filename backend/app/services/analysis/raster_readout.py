@@ -11,6 +11,7 @@ import xarray as xr
 from pystac import Item
 from rasterio.mask import mask
 from rasterio.warp import Resampling, reproject, transform_geom
+from shapely.geometry import Polygon, mapping
 
 from app.services.analysis.pure_indicators import masked_mean, ndbi, ndvi, ndwi_green_nir
 

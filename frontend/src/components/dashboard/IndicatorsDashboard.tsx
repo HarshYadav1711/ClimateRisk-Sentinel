@@ -21,10 +21,11 @@ function formatValue(ind: AnalysisIndicator): string {
 type Props = {
   result: AnalysisRunResponse | null;
   loading: boolean;
+  apiOnline: boolean;
   onClearResults: () => void;
 };
 
-export function IndicatorsDashboard({ result, loading, onClearResults }: Props) {
+export function IndicatorsDashboard({ result, loading, apiOnline, onClearResults }: Props) {
   if (loading) {
     return (
       <div className="rounded-2xl border border-slate-800/90 bg-slate-950/35 p-8 ring-1 ring-white/[0.03]">
@@ -35,6 +36,18 @@ export function IndicatorsDashboard({ result, loading, onClearResults }: Props) 
             <p className="mt-1 text-xs text-slate-500">Raster statistics and OSM proximity load over the network.</p>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (!apiOnline && !result) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/25 px-6 py-10 text-center ring-1 ring-white/[0.03]">
+        <p className="text-sm font-medium text-slate-300">Backend not connected</p>
+        <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-500">
+          Start the API locally (see README). Until health checks succeed, validation, STAC search, and analysis stay
+          disabled.
+        </p>
       </div>
     );
   }
@@ -57,6 +70,11 @@ export function IndicatorsDashboard({ result, loading, onClearResults }: Props) 
 
   return (
     <div className="space-y-6">
+      {!apiOnline ? (
+        <p className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-100/90">
+          API offline — displaying cached session results only; reconnect to refresh.
+        </p>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Decision view</p>
