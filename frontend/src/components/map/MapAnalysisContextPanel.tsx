@@ -47,31 +47,23 @@ export function MapAnalysisContextPanel({
   return (
     <div className="pointer-events-none max-w-[15rem] rounded-xl border border-slate-700/90 bg-slate-950/92 px-3 py-2.5 text-[11px] shadow-lg backdrop-blur-md transition-opacity duration-200">
       <p className="font-semibold uppercase tracking-[0.14em] text-slate-500">Analysis context</p>
-      <dl className="mt-2 space-y-1.5 text-slate-200">
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">AOI</dt>
-          <dd className="text-right font-medium text-slate-300">
-            {!hasAoi ? "None" : aoiValidated ? "Validated" : "Draft"}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Pipeline</dt>
-          <dd className="text-right font-medium text-slate-300">{analysisStatus}</dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">Latest scene</dt>
-          <dd className="font-mono text-[10px] text-slate-300">{formatSceneDate(latestScene)}</dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-slate-500">STAC · clouds</dt>
-          <dd className="font-mono text-slate-300">{cloud}</dd>
-        </div>
-        {analysisResult?.partial_analysis ? (
-          <div className="rounded-md border border-amber-900/50 bg-amber-950/35 px-2 py-1 text-amber-100/95">
-            Partial analysis{partialNote ? ` · ${partialNote}` : ""}
-          </div>
-        ) : null}
+      <dl className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1.5 text-slate-200">
+        <dt className="text-slate-500">AOI</dt>
+        <dd className="m-0 text-right font-medium text-slate-300">
+          {!hasAoi ? "None" : aoiValidated ? "Validated" : "Draft"}
+        </dd>
+        <dt className="text-slate-500">Pipeline</dt>
+        <dd className="m-0 text-right font-medium text-slate-300">{analysisStatus}</dd>
+        <dt className="text-slate-500">Latest scene</dt>
+        <dd className="m-0 text-right font-mono text-[10px] text-slate-300">{formatSceneDate(latestScene)}</dd>
+        <dt className="text-slate-500">STAC · clouds</dt>
+        <dd className="m-0 text-right font-mono text-slate-300">{cloud}</dd>
       </dl>
+      {analysisResult?.partial_analysis ? (
+        <p className="mt-2 rounded-md border border-amber-900/50 bg-amber-950/35 px-2 py-1 text-amber-100/95" role="status">
+          Partial analysis{partialNote ? ` · ${partialNote}` : ""}
+        </p>
+      ) : null}
     </div>
   );
 }
